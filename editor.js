@@ -395,7 +395,14 @@
       if (event.key === "Escape") {
         event.preventDefault();
         close();
-      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        return;
+      }
+      const target = event.target;
+      const typing = target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        Boolean(target?.isContentEditable);
+      if (typing) return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
         event.preventDefault();
         if (event.shiftKey) redo();
         else undo();

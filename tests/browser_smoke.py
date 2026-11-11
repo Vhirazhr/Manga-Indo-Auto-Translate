@@ -123,6 +123,8 @@ with sync_playwright() as p:
         wide_buffer=io.BytesIO();wide.save(wide_buffer,format='PNG')
         wide_url='data:image/png;base64,'+base64.b64encode(wide_buffer.getvalue()).decode()
         page.evaluate('(src) => { document.body.innerHTML = ""; const img=document.createElement("img");img.id="wide";img.src=src;img.width=1000;img.height=180;document.body.append(img); }',wide_url)
+        page.wait_for_function("() => document.querySelector('#wide')?.complete && document.querySelector('#wide')?.naturalWidth === 1000")
+        page.wait_for_timeout(250)  # Let the content-script image scan register pointer handlers.
         page.locator('#wide').hover(position={"x":500,"y":90});page.wait_for_timeout(220)
         button_center('R')
         print('PASS wide webtoon panels are detected for manual translation')

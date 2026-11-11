@@ -341,6 +341,38 @@ async function typesetTranslations(cleaned, originalDimensions, regions) {
   return "data:image/png;base64," + bytesToBase64(new Uint8Array(await blob.arrayBuffer()));
 }
 
+
+async function captureSelectedArea(tab, rect, dpr) {
+  if (!tab || typeof tab.windowId !== "number") {
+    throw new Error("Tab aktif tidak ditemukan untuk mengambil area layar.");
+  }
+
+  let screenshot;
+  try {
+    screenshot = await chrome.tabs.captureVisibleTab(tab.windowId, {
+      format: "png"
+    });
+  } catch (_) {
+    throw new Error("Chrome tidak memberi izin screenshot. Buka popup extension, lalu mulai pemilihan area lagi.");
+  }
+
+  const source = dataUrlParts(screenshot);
+  const bitmap = await createImageBitmap(base64ToBlob(source.data, source.mimeType));
+  const scale = Math.max(0.5, Math.min(4, Number(dpr) || 1));
+  const x = Math.max(0, Math.min(bitmap.width - 1, Math.round(Number(rect.left) * scale)));
+  const y = Math.max(0, Math.min(bitmap.height - 1, Math.round(Number(rect.top) * scale)));
+  const width = Math.max(1, Math.min(bitmap.width - x, Math.round(Number(rect.width) * scale)));
+  const height = Math.max(1, Math.min(bitmap.height - y, Math.round(Number(rect.height) * scale)));
+
+  const canvas = new OffscreenCanvas(width, height);
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(bitmap, x, y, width, height, 0, 0, width, height);
+  bitmap.close();
+
+  const blob = await canvas.convertToBlob({ type: "image/png" });
+  return "data:image/png;base64," + bytesToBase64(new Uint8Array(await blob.arrayBuffer()));
+}
+
 async function processImage(message) {
   const saved = await chrome.storage.local.get(["apiKey", "targetLanguage", "sourceLanguage", "cleanupMode"]);
   const apiKey = String(saved.apiKey || "").trim();
@@ -388,6 +420,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     processImage(message)
       .then(result => sendResponse(result))
       .catch(error => sendResponse({ ok: false, error: error?.message || "Terjemahan gagal." }));
+    return true;
+  }
+
+  if (message?.type === "CAPTURE_SELECTED_AREA") {
+    captureSelectedArea(sender.tab, message.rect || {}, message.dpr)
+      .then(dataUrl => sendResponse({ ok: true, dataUrl }))
+      .catch(error => sendResponse({ ok: false, error: error?.message || "Gagal mengambil area layar." }));
     return true;
   }
 

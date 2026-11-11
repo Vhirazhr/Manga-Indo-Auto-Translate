@@ -86,6 +86,29 @@
     return ratio > 0.45 || img.naturalHeight > 1200;
   }
 
+  function containsPoint(rect, x, y) {
+    return Boolean(rect && x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom);
+  }
+
+  // Shadow-DOM overlays can make :hover unreliable while the pointer crosses
+  // between an image and its floating toolbar. Use viewport geometry instead.
+  function scheduleToolbarHide(event, delay) {
+    const x = event.clientX;
+    const y = event.clientY;
+    setTimeout(() => {
+      const state = activeState;
+      if (!state || !state.img.isConnected) {
+        hideToolbar();
+        return;
+      }
+      const imageRect = state.img.getBoundingClientRect();
+      const toolbarRect = toolbar?.getBoundingClientRect();
+      const overImage = containsPoint(imageRect, x, y);
+      const overToolbar = Boolean(toolbar && toolbar.style.display !== "none" && containsPoint(toolbarRect, x, y));
+      if (!overImage && !overToolbar) hideToolbar();
+    }, delay);
+  }
+
   function makeState(img) {
     let state = imageStates.get(img);
     if (state) return state;
@@ -110,11 +133,7 @@
     stateList.add(state);
 
     img.addEventListener("pointerenter", () => showToolbar(state));
-    img.addEventListener("pointerleave", () => {
-      setTimeout(() => {
-        if (!toolbar || !toolbar.matches(":hover")) hideToolbar();
-      }, 140);
-    });
+    img.addEventListener("pointerleave", event => scheduleToolbarHide(event, 140));
 
     img.addEventListener("load", () => {
       if (!state.showingTranslated && img.currentSrc && img.currentSrc !== state.originalSrc) {
@@ -145,12 +164,7 @@
 
     toolbar = document.createElement("div");
     toolbar.className = "mita-toolbar";
-    toolbar.addEventListener("pointerenter", () => {});
-    toolbar.addEventListener("pointerleave", () => {
-      setTimeout(() => {
-        if (activeState && !activeState.img.matches(":hover") && !toolbar.matches(":hover")) hideToolbar();
-      }, 160);
-    });
+    toolbar.addEventListener("pointerleave", event => scheduleToolbarHide(event, 160));
 
     const translate = document.createElement("button");
     translate.className = "mita-main";

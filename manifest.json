@@ -1,20 +1,30 @@
 {
   "manifest_version": 3,
   "name": "Manga Indo Auto Translate",
-  "version": "1.1.0",
-  "description": "Deteksi dialog manga multi-bahasa dan terjemahkan ke bahasa Indonesia dengan Gemini.",
-  "permissions": [
-    "activeTab",
-    "scripting",
-    "storage"
-  ],
-  "host_permissions": [
-    "https://generativelanguage.googleapis.com/*"
-  ],
-  "background": {
-    "service_worker": "background.js"
-  },
-  "action": {
-    "default_popup": "popup.html"
+  "version": "2.0.0",
+  "description": "Penerjemah manga di halaman browser: deteksi halaman, terjemahan gambar, auto-scroll, area selection, dan editor.",
+  "permissions": ["activeTab", "scripting", "storage", "contextMenus", "downloads"],
+  "host_permissions": ["https://generativelanguage.googleapis.com/*"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "background": {"service_worker": "background.js"},
+  "action": {"default_popup": "popup.html"},
+  "content_scripts": [{
+    "matches": ["http://*/*", "https://*/*"],
+    "js": ["editor.js", "content.js"],
+    "run_at": "document_idle"
+  }],
+  "commands": {
+    "toggle-auto": {
+      "suggested_key": {"default": "Alt+Shift+E"},
+      "description": "Aktif/nonaktifkan auto-translate untuk situs ini"
+    },
+    "select-area": {
+      "suggested_key": {"default": "Alt+Shift+S"},
+      "description": "Pilih area manga untuk diterjemahkan"
+    },
+    "toggle-original": {
+      "suggested_key": {"default": "Alt+Shift+O"},
+      "description": "Tampilkan gambar asli atau terjemahan"
+    }
   }
 }

@@ -5,7 +5,7 @@ services:
     platform: linux/amd64
     init: true
     entrypoint: ["/bin/sh", "-c"]
-    # Run the 24-hour janitor beside the upstream server. It only cleans the
+    # Run the 3-hour janitor beside the upstream server. It only cleans the
     # dedicated temp/result volumes; model and Hugging Face cache volumes persist.
     command: >
       /bin/sh /usr/local/bin/mita-cleanup-temp.sh &
@@ -16,6 +16,8 @@ services:
       TMPDIR: /tmp/manga-indo-temp
       TEMP: /tmp/manga-indo-temp
       TMP: /tmp/manga-indo-temp
+      MITA_RETENTION_MINUTES: "180"
+      MITA_CLEANUP_INTERVAL_SECONDS: "900"
     volumes:
       - manga-models:/app/models
       - manga-cache:/root/.cache

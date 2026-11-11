@@ -273,7 +273,7 @@
   }
 
   function enqueue(state) {
-    if (!autoEnabled || state.busy || state.status === "done" || state.status === "queued") return;
+    if (!autoEnabled || state.busy || ["done", "empty", "error", "queued"].includes(state.status)) return;
     state.status = "queued";
     queue.push(state);
     queue.sort((a, b) => imageDistance(a) - imageDistance(b));
@@ -296,7 +296,12 @@
 
   function enqueueNearViewport() {
     const margin = 1000;
-    for (const state of stateList) {
+    for (const state of Array.from(stateList)) {
+      if (!state.img.isConnected) {
+        stateList.delete(state);
+        if (intersectionObserver) intersectionObserver.unobserve(state.img);
+        continue;
+      }
       const rect = state.img.getBoundingClientRect();
       if (rect.bottom >= -margin && rect.top <= window.innerHeight + margin) enqueue(state);
     }
@@ -649,6 +654,9 @@
   }, { passive: true, capture: true });
 
   window.addEventListener("resize", updateToolbarPosition, { passive: true });
+  document.addEventListener("load", event => {
+    if (event.target instanceof HTMLImageElement) scanImages();
+  }, true);
 
   document.addEventListener("keydown", event => {
     if (event.key === "Escape") cancelAreaSelection();

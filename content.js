@@ -448,6 +448,12 @@
     }
     if (activeState) return activeState;
 
+    if (srcUrl) {
+      const exact = Array.from(document.querySelectorAll("img")).find(img =>
+        img.currentSrc === srcUrl || img.src === srcUrl
+      );
+      if (exact && isCandidateImage(exact)) return makeState(exact);
+    }
     const candidates = Array.from(document.querySelectorAll("img")).filter(isCandidateImage);
     if (!candidates.length) return null;
     const center = window.innerHeight / 2;
@@ -532,49 +538,70 @@
       }
     }
 
-    if (!state) {
-      showToast("Area harus berada di dalam satu gambar manga.", "warning");
+    showToast("Menerjemahkan area yang kamu pilih...", "info", 6000);
+
+    let response = null;
+    let directError = null;
+
+    if (state) {
+      const bounds = state.img.getBoundingClientRect();
+      const area = {
+        x: Math.max(0, (rect.left - bounds.left) / bounds.width),
+        y: Math.max(0, (rect.top - bounds.top) / bounds.height),
+        width: Math.min(1, rect.width / bounds.width),
+        height: Math.min(1, rect.height / bounds.height)
+      };
+
+      try {
+        const source = await imageRequestSource(state);
+        response = await chrome.runtime.sendMessage({
+          type: "PROCESS_MANGA_IMAGE",
+          ...source,
+          area
+        });
+        if (!response?.ok) throw new Error(response?.error || "Gagal menerjemahkan area gambar.");
+      } catch (error) {
+        directError = error;
+      }
+    }
+
+    // Fallback: capture only the user-selected visible screen rectangle.
+    // This also supports readers that draw pages on a canvas or block image URLs.
+    if (!response?.ok) {
+      try {
+        const captured = await chrome.runtime.sendMessage({
+          type: "CAPTURE_SELECTED_AREA",
+          rect,
+          dpr: window.devicePixelRatio || 1
+        });
+        if (!captured?.ok) throw new Error(captured?.error || "Tidak bisa mengambil area layar.");
+        response = await chrome.runtime.sendMessage({
+          type: "PROCESS_MANGA_IMAGE",
+          imageDataUrl: captured.dataUrl
+        });
+        if (!response?.ok) throw new Error(response?.error || "Gagal menerjemahkan screenshot area.");
+      } catch (error) {
+        const message = error?.message || directError?.message || "Terjemahan area gagal.";
+        showToast(message, "error", 6500);
+        return;
+      }
+    }
+
+    if (response.noText || !response.dataUrl) {
+      showToast("Tidak ada teks yang terbaca di area ini.", "warning");
       return;
     }
 
-    const bounds = state.img.getBoundingClientRect();
-    const area = {
-      x: Math.max(0, (rect.left - bounds.left) / bounds.width),
-      y: Math.max(0, (rect.top - bounds.top) / bounds.height),
-      width: Math.min(1, rect.width / bounds.width),
-      height: Math.min(1, rect.height / bounds.height)
-    };
-
-    if (area.width <= 0 || area.height <= 0) return;
-
-    showToast("Menerjemahkan area yang kamu pilih...", "info", 6000);
-    try {
-      const source = await imageRequestSource(state);
-      const response = await chrome.runtime.sendMessage({
-        type: "PROCESS_MANGA_IMAGE",
-        ...source,
-        area
-      });
-
-      if (!response?.ok) throw new Error(response?.error || "Gagal menerjemahkan area.");
-      if (response.noText || !response.dataUrl) {
-        showToast("Tidak ada teks yang terbaca di area ini.", "warning");
-        return;
-      }
-
-      if (areaResult) areaResult.remove();
-      areaResult = document.createElement("img");
-      areaResult.className = "mita-area-result";
-      areaResult.src = response.dataUrl;
-      areaResult.style.left = rect.left + "px";
-      areaResult.style.top = rect.top + "px";
-      areaResult.style.width = rect.width + "px";
-      areaResult.style.height = rect.height + "px";
-      uiRoot.appendChild(areaResult);
-      showToast("Area berhasil diterjemahkan. Hasil ditampilkan di atas gambar.", "success");
-    } catch (error) {
-      showToast(error?.message || "Terjemahan area gagal.", "error", 6500);
-    }
+    if (areaResult) areaResult.remove();
+    areaResult = document.createElement("img");
+    areaResult.className = "mita-area-result";
+    areaResult.src = response.dataUrl;
+    areaResult.style.left = rect.left + "px";
+    areaResult.style.top = rect.top + "px";
+    areaResult.style.width = rect.width + "px";
+    areaResult.style.height = rect.height + "px";
+    uiRoot.appendChild(areaResult);
+    showToast("Area berhasil diterjemahkan dan ditampilkan di atas halaman.", "success");
   }
 
   function cancelAreaSelection() {
@@ -655,10 +682,14 @@
     if (message.type === "SET_SITE_AUTO") {
       setSiteAuto(Boolean(message.enabled));
     } else if (message.type === "TRANSLATE_VISIBLE") {
-      const visible = Array.from(stateList).filter(state => {
-        const rect = state.img.getBoundingClientRect();
-        return rect.bottom > 0 && rect.top < window.innerHeight;
-      });
+      scanImages();
+      const visible = Array.from(document.querySelectorAll("img"))
+        .filter(isCandidateImage)
+        .map(img => makeState(img))
+        .filter(state => {
+          const rect = state.img.getBoundingClientRect();
+          return rect.bottom > 0 && rect.top < window.innerHeight;
+        });
       if (!visible.length) {
         showToast("Tidak menemukan gambar manga yang terlihat. Scroll ke halaman manga dahulu.", "warning");
         return;
@@ -686,14 +717,28 @@
   });
 
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== "local" || !changes[AUTO_KEY]) return;
-    const next = changes[AUTO_KEY].newValue || {};
-    const enabled = Boolean(next[siteHost]);
-    if (enabled !== autoEnabled) {
-      autoEnabled = enabled;
-      updateToolbarState();
+    if (area !== "local") return;
+
+    if (changes[AUTO_KEY]) {
+      const next = changes[AUTO_KEY].newValue || {};
+      const enabled = Boolean(next[siteHost]);
+      if (enabled !== autoEnabled) {
+        autoEnabled = enabled;
+        updateToolbarState();
+        if (autoEnabled) enqueueNearViewport();
+        else queue.length = 0;
+      }
+    }
+
+    if (changes.targetLanguage || changes.sourceLanguage || changes.cleanupMode) {
+      for (const state of stateList) {
+        if (state.showingTranslated) showOriginal(state);
+        state.translatedDataUrl = "";
+        state.status = "idle";
+      }
+      queue.length = 0;
       if (autoEnabled) enqueueNearViewport();
-      else queue.length = 0;
+      showToast("Pengaturan bahasa/restorasi berubah. Halaman akan diterjemahkan ulang saat dibutuhkan.", "info");
     }
   });
 

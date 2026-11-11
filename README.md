@@ -5,13 +5,13 @@ Ekstensi Chrome untuk menerjemahkan gambar manga langsung di halaman baca. **Tan
 ## Mulai di Windows
 
 1. Install dan buka **Docker Desktop**, gunakan Linux containers / WSL 2.
-2. Download ZIP repo ini, ekstrak, lalu buka PowerShell di folder hasil ekstraksi.
+2. Clone repository (`git clone https://github.com/Vhirazhr/Manga-Indo-Auto-Translate.git`) lalu buka PowerShell di folder repository.
 3. Jalankan `powershell -ExecutionPolicy Bypass -File .\start-engine.ps1`.
 4. Buka `chrome://extensions`, aktifkan **Developer mode**, pilih **Load unpacked** dan folder yang berisi `manifest.json`. Untuk versi lama, pilih **Reload**.
 5. Refresh tab manga. Buka popup ekstensi → **Cek mesin lokal** → **Izinkan situs & CDN gambar**.
 6. Pilih Bahasa Indonesia, arahkan kursor ke gambar, klik **R**. Coba satu halaman dahulu sebelum mengaktifkan Auto.
 
-Docker mengunduh runtime terlebih dahulu. Saat gambar pertama diproses, mesin mengunduh model; siapkan internet, ruang disk beberapa GB, dan waktu unduh. Setelah model tersedia, inferensi berjalan lokal. CPU didukung tetapi dapat lambat. Profil bawaan tidak membutuhkan NVIDIA; akselerasi GPU memerlukan konfigurasi Docker/upstream terpisah. Tidak ada model yang berjalan otomatis hanya karena ekstensi dipasang.
+Docker mengunduh runtime terlebih dahulu. Saat gambar pertama diproses, mesin mengunduh model; siapkan internet, ruang disk yang cukup, dan waktu unduh. Model dan cache AI disimpan persisten agar tidak diunduh ulang setiap hari. Setelah model tersedia, inferensi berjalan lokal. CPU didukung tetapi dapat lambat. Profil bawaan tidak membutuhkan NVIDIA; akselerasi GPU memerlukan konfigurasi Docker/upstream terpisah. Tidak ada model yang berjalan otomatis hanya karena ekstensi dipasang.
 
 Image resmi saat ini hanya menyediakan AMD64. Mac Apple Silicon memakai emulasi dan bisa jauh lebih lambat.
 
@@ -41,7 +41,7 @@ Jika sudah memasang upstream dengan Python, jalankan dari folder upstream:
 python server/main.py --host 127.0.0.1 --port 8000 --start-instance
 ```
 
-## Pengelolaan & pemecahan masalah
+## Retensi file dan penghematan penyimpanan\n\n- Gambar hasil terjemahan dari extension dikirim sebagai data gambar langsung ke tab Chrome; extension tidak otomatis membuat file PNG permanen. Hasil yang kamu pilih melalui **Download PNG** tetap menjadi file milikmu dan tidak disentuh pembersih otomatis.\n- Container menjalankan `engine/cleanup-temp.sh`: pembersihan langsung saat startup, lalu setiap 15 menit menghapus file temporary dan file di `/app/result` yang waktu modifikasinya lebih dari 24 jam. File yang masih baru/aktif dipertahankan.\n- Folder temporary Python diarahkan ke volume `manga-temp`; hasil server berada di volume `manga-results`. Keduanya terpisah dari `manga-models` dan `manga-cache`, yang tidak pernah dihapus oleh pembersih.\n- Log Docker dibatasi sampai tiga file berukuran maksimum 10 MB per file (maksimum sekitar 30 MB).\n- Pembersihan 24 jam tidak menghapus Docker image, model OCR/M2M100/LaMa, cache model, repository, atau folder Downloads. Jangan gunakan `docker compose down -v` kecuali memang ingin menghapus seluruh volume termasuk model yang sudah diunduh.\n\n## Pengelolaan & pemecahan masalah
 
 ```sh
 # Lihat progres unduhan model dan error inferensi
@@ -64,7 +64,7 @@ docker compose -f engine/compose.yaml up -d
 
 ## Privasi dan batas operasional
 
-Gambar hanya diproses ketika Translate/area/Auto dipicu. Ekstensi mengambil gambar dari situs/CDN yang diizinkan, lalu mengirimnya ke loopback. Tidak mengirim gambar ke Gemini. Kunci Gemini lama dihapus saat update. Port Docker dipublikasikan hanya ke `127.0.0.1`; jangan membuka server ini ke internet. Model/dependensi tetap diunduh dari penyedia upstream pada pemakaian awal. Upstream dapat menyimpan hasil/log di container; volume model/cache dipertahankan saat `down`.
+Gambar hanya diproses ketika Translate/area/Auto dipicu. Ekstensi mengambil gambar dari situs/CDN yang diizinkan, lalu mengirimnya ke loopback. Tidak mengirim gambar ke Gemini. Kunci Gemini lama dihapus saat update. Port Docker dipublikasikan hanya ke `127.0.0.1`; jangan membuka server ini ke internet. Model/dependensi tetap diunduh dari penyedia upstream pada pemakaian awal. Temporary files dan result server yang berumur lebih dari 24 jam dibersihkan otomatis. Model dan cache AI tetap tersimpan di volume persisten saat `down`; file yang diunduh manual ke folder Downloads tidak disentuh.
 
 Kode dan model upstream memiliki lisensi masing-masing; lihat [lisensi upstream](https://github.com/zyddnys/manga-image-translator/blob/main/LICENSE) dan model terkait sebelum redistribusi. Image upstream tidak disalin ke repository ini.
 

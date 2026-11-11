@@ -51,7 +51,7 @@ with sync_playwright() as p:
         sw.evaluate('(id) => chrome.tabs.sendMessage(id,{type:"TOGGLE_ORIGINALS"})',tabid)
         page.wait_for_function('(translated) => document.querySelector("#page").src === translated',arg=translated)
         print('PASS original/result toggle preserves both versions')
-        page.bring_to_front();page.mouse.move(400,60);page.wait_for_timeout(300)
+        page.bring_to_front();page.locator('#page').hover(position={"x":320,"y":480});page.wait_for_timeout(300)
         # CDP pierces the closed shadow root. Re-query after every interaction because
         # Chromium invalidates DOM node IDs when the toolbar text/layout is updated.
         cdp=ctx.new_cdp_session(page)
@@ -77,7 +77,7 @@ with sync_playwright() as p:
         x,y=button_center('Result')
         page.mouse.click(x,y);page.wait_for_timeout(200);assert page.locator('#page').get_attribute('src')==translated
         print('PASS toolbar short click toggles original/result')
-        page.mouse.move(400,60);page.wait_for_timeout(200)
+        page.locator('#page').hover(position={"x":320,"y":480});page.wait_for_timeout(220)
         x,y=button_center('Original')
         page.mouse.move(x,y);page.mouse.down();page.wait_for_timeout(400);assert page.locator('#page').get_attribute('src')==original_url
         page.mouse.up();page.wait_for_timeout(200);assert page.locator('#page').get_attribute('src')==translated

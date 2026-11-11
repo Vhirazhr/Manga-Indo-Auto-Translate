@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Manga Indo Auto Translate",
-  "version": "3.0.0",
-  "description": "Penerjemah manga lokal tanpa API key: OCR, M2M100, LaMa, auto-scroll, perbandingan asli, dan editor.",
+  "version": "3.1.0",
+  "description": "Penerjemah manga lokal tanpa API key: OCR, M2M100, LaMa, auto-scroll, terjemahan area, perbandingan asli, dan editor gambar.",
   "permissions": [
     "activeTab",
     "scripting",

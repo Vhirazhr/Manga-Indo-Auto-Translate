@@ -1,0 +1,26 @@
+name: Validate Chrome extension
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate manifest
+        run: node -e "const m = require('./manifest.json'); if (m.manifest_version !== 3) process.exit(1); for (const f of ['background.js','content.js','editor.js','popup.js']) { if (!require('fs').existsSync(f)) throw new Error('Missing ' + f); }"
+      - name: Check JavaScript syntax
+        run: |
+          node --check background.js
+          node --check content.js
+          node --check editor.js
+          node --check popup.js

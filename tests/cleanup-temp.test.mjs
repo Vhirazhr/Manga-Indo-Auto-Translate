@@ -21,7 +21,7 @@ test("3-hour cleanup removes only expired temp/results and preserves recent file
   const oldTemp = path.join(tempRoot, "old-page.tmp");
   const newTemp = path.join(tempRoot, "current-page.tmp");
   const oldResult = path.join(resultRoot, "old-result.png");
-  const newResult = path.join(resultRoot, "downloaded-result.png");
+  const newResult = path.join(resultRoot, "recent-result.png");
   const modelFile = path.join(modelRoot, "ocr-model.bin");
 
   for (const file of [oldTemp, newTemp, oldResult, newResult, modelFile]) {

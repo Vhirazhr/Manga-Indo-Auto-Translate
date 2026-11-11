@@ -597,6 +597,34 @@
     selectionBox.style.height = height + "px";
   }
 
+  function loadImageDataUrl(dataUrl) {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error("Gambar area tidak dapat dibuka untuk digabungkan."));
+      image.src = dataUrl;
+    });
+  }
+
+  async function composeAreaResult(baseDataUrl, translatedAreaDataUrl, area) {
+    const [base, patch] = await Promise.all([
+      loadImageDataUrl(baseDataUrl),
+      loadImageDataUrl(translatedAreaDataUrl)
+    ]);
+    const canvas = document.createElement("canvas");
+    canvas.width = base.naturalWidth;
+    canvas.height = base.naturalHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas tidak tersedia untuk menggabungkan hasil area.");
+    ctx.drawImage(base, 0, 0);
+    const x = Math.max(0, Math.min(canvas.width - 1, Math.round(area.x * canvas.width)));
+    const y = Math.max(0, Math.min(canvas.height - 1, Math.round(area.y * canvas.height)));
+    const width = Math.max(1, Math.min(canvas.width - x, Math.round(area.width * canvas.width)));
+    const height = Math.max(1, Math.min(canvas.height - y, Math.round(area.height * canvas.height)));
+    ctx.drawImage(patch, x, y, width, height);
+    return canvas.toDataURL("image/png");
+  }
+
   async function translateSelectedArea(rect) {
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
@@ -614,6 +642,8 @@
 
     let response = null;
     let directError = null;
+    let integratedState = null;
+    let integratedArea = null;
 
     if (state) {
       const b = state.img.getBoundingClientRect();
@@ -635,6 +665,8 @@
           area
         });
         if (!response?.ok) throw new Error(response?.error || "Gagal menerjemahkan area gambar.");
+        integratedState = state;
+        integratedArea = area;
       } catch (error) {
         if (error.processing) { showToast(error.message, "error", 6500); return; }
         directError = error;
@@ -669,6 +701,31 @@
       return;
     }
 
+    if (integratedState && integratedArea) {
+      try {
+        const originalSource = await imageRequestSource(integratedState);
+        const fullImage = await chrome.runtime.sendMessage({ type: "GET_IMAGE_DATA", ...originalSource });
+        if (!fullImage?.ok || !fullImage.dataUrl) {
+          throw new Error(fullImage?.error || "Gagal mengambil gambar penuh untuk menyatukan hasil area.");
+        }
+        const baseDataUrl = integratedState.showingTranslated && integratedState.translatedDataUrl
+          ? integratedState.translatedDataUrl
+          : fullImage.dataUrl;
+        const merged = await composeAreaResult(baseDataUrl, response.dataUrl, integratedArea);
+        integratedState.translatedDataUrl = merged;
+        integratedState.status = "done";
+        showTranslated(integratedState);
+        if (areaResult) {
+          areaResult.remove();
+          areaResult = null;
+        }
+        showToast("Area diterjemahkan dan digabungkan ke halaman manga. Original/Result tetap berfungsi.", "success", 6000);
+        return;
+      } catch (error) {
+        showToast("Area berhasil diproses, tetapi belum bisa digabungkan ke gambar: " + (error?.message || "kesalahan canvas"), "warning", 6500);
+      }
+    }
+
     if (areaResult) areaResult.remove();
     areaResult = document.createElement("img");
     areaResult.className = "mita-area-result";
@@ -678,7 +735,7 @@
     areaResult.style.width = rect.width + "px";
     areaResult.style.height = rect.height + "px";
     uiRoot.appendChild(areaResult);
-    showToast("Area berhasil diterjemahkan dan ditampilkan di atas halaman.", "success");
+    showToast("Area diterjemahkan sebagai overlay sementara. Untuk hasil permanen, pilih area di dalam satu gambar manga.", "warning", 6500);
   }
 
   function cancelAreaSelection() {

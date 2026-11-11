@@ -37,7 +37,7 @@
 
   <div class="section">
     <div class="section-title">Mesin lokal · tanpa API key</div>
-    <p>Jalankan mesin Manga Image Translator di komputer ini, lalu cek koneksinya.</p>
+    <p>Mesin AI berjalan terpisah di komputer ini melalui Docker Desktop. Jalankan <b>start-engine.ps1</b> terlebih dahulu, lalu cek koneksinya.</p>
     <button id="checkEngine" class="primary">Cek mesin lokal</button>
     <div class="hint">OCR + M2M100 + LaMa. Model diunduh saat pertama digunakan. Gambar diproses di komputer ini.</div>
     <div class="hint"><a href="https://github.com/Vhirazhr/Manga-Indo-Auto-Translate#readme" target="_blank" rel="noreferrer">Panduan menjalankan mesin</a></div>
@@ -87,7 +87,7 @@
   </div>
 
   <div id="status" role="status" aria-live="polite">Jalankan mesin lokal dan izinkan situs manga sebelum mulai.</div>
-  <div class="version">Versi 3.0.0 · Manga Indo</div>
+  <div class="version" id="version">Memuat versi… · Manga Indo</div>
 
   <script src="popup.js"></script>
 </body>

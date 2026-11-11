@@ -52,7 +52,8 @@ with sync_playwright() as p:
         page.wait_for_function('(translated) => document.querySelector("#page").src === translated',arg=translated)
         print('PASS original/result toggle preserves both versions')
         page.bring_to_front();page.mouse.move(400,60);page.wait_for_timeout(300)
-        # CDP pierces the closed shadow root to exercise the actual toolbar controls.
+        # CDP pierces the closed shadow root. Re-query after every interaction because
+        # Chromium invalidates DOM node IDs when the toolbar text/layout is updated.
         cdp=ctx.new_cdp_session(page)
         def find_buttons(node):
             found=[]
@@ -60,18 +61,27 @@ with sync_playwright() as p:
             for key in ['children','shadowRoots']:
                 for child in node.get(key,[]):found+=find_buttons(child)
             return found
-        buttons=find_buttons(cdp.send('DOM.getDocument',{'depth':-1,'pierce':True})['root'])
-        original_button=next(b for b in buttons if any(c.get('nodeValue')=='Original' for c in b.get('children',[])))
-        model=cdp.send('DOM.getBoxModel',{'nodeId':original_button['nodeId']})['model']['content']
-        x=(model[0]+model[4])/2;y=(model[1]+model[5])/2
+        def button_center(label):
+            for _ in range(5):
+                root=cdp.send('DOM.getDocument',{'depth':-1,'pierce':True})['root']
+                button=next((b for b in find_buttons(root) if any(c.get('nodeValue')==label for c in b.get('children',[]))),None)
+                if button:
+                    try:
+                        model=cdp.send('DOM.getBoxModel',{'nodeId':button['nodeId']})['model']['content']
+                        return (model[0]+model[4])/2,(model[1]+model[5])/2
+                    except Exception:
+                        page.wait_for_timeout(80)
+            raise AssertionError(f'Could not locate visible toolbar button: {label}')
+        x,y=button_center('Original')
         page.mouse.click(x,y);page.wait_for_timeout(200);assert page.locator('#page').get_attribute('src')==original_url
+        x,y=button_center('Result')
         page.mouse.click(x,y);page.wait_for_timeout(200);assert page.locator('#page').get_attribute('src')==translated
+        print('PASS toolbar short click toggles original/result')
         page.mouse.move(400,60);page.wait_for_timeout(200)
-        model=cdp.send('DOM.getBoxModel',{'nodeId':original_button['nodeId']})['model']['content']
-        x=(model[0]+model[4])/2;y=(model[1]+model[5])/2
+        x,y=button_center('Original')
         page.mouse.move(x,y);page.mouse.down();page.wait_for_timeout(400);assert page.locator('#page').get_attribute('src')==original_url
         page.mouse.up();page.wait_for_timeout(200);assert page.locator('#page').get_attribute('src')==translated
-        print('PASS toolbar short click and press-and-hold')
+        print('PASS toolbar press-and-hold temporarily reveals original')
         print('PASS popup has no API-key controls')
         page.evaluate('(src) => { document.body.innerHTML = ""; for (let i=0;i<3;i++) { const img = document.createElement("img"); img.src=src; img.width=320; img.height=240; document.body.append(img); } }', original_url)
         page.wait_for_timeout(500)

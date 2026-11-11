@@ -13,6 +13,8 @@ Ekstensi Chrome untuk menerjemahkan gambar manga langsung di halaman baca. **Tan
 
 Docker mengunduh runtime terlebih dahulu. Saat gambar pertama diproses, mesin mengunduh model; siapkan internet, ruang disk beberapa GB, dan waktu unduh. Setelah model tersedia, inferensi berjalan lokal. CPU didukung tetapi dapat lambat. Profil bawaan tidak membutuhkan NVIDIA; akselerasi GPU memerlukan konfigurasi Docker/upstream terpisah. Tidak ada model yang berjalan otomatis hanya karena ekstensi dipasang.
 
+Image resmi saat ini hanya menyediakan AMD64. Mac Apple Silicon memakai emulasi dan bisa jauh lebih lambat.
+
 Linux/macOS: jalankan `sh start-engine.sh` setelah Docker siap.
 
 ## Fitur
@@ -29,7 +31,7 @@ Mesin mendeteksi bahasa sumber otomatis; pilihan sumber manual lama dihapus kare
 
 ## Mesin yang dipakai
 
-Ekstensi hanya menjadi penghubung dan antarmuka browser, bukan implementasi OCR/terjemahan/inpainting baru. Launcher memakai image resmi `zyddnys/manga-image-translator:main`. Tag upstream ini dapat berubah. Adapter diperiksa terhadap sumber upstream commit `36fed8528d851f8e4cce8e35255e080f4138a8d3`, khususnya `server/main.py`, `server/streaming.py`, dan `manga_translator/config.py`.
+Ekstensi hanya menjadi penghubung dan antarmuka browser, bukan implementasi OCR/terjemahan/inpainting baru. Launcher memakai image resmi `zyddnys/manga-image-translator:main` yang dikunci pada digest `sha256:62b690cfbfd619afa4ea446d62cf8ea1088a76c5ece64dd834d67a881fc05ff7` agar runtime tidak berubah tanpa sengaja. Adapter diperiksa terhadap sumber upstream commit `36fed8528d851f8e4cce8e35255e080f4138a8d3`, khususnya `server/main.py`, `server/streaming.py`, dan `manga_translator/config.py`.
 
 Gambar dikirim sebagai multipart ke `http://127.0.0.1:8000/translate/with-form/image/stream`. Ini koneksi HTTP lokal ke komputer sendiri, bukan API cloud. Adapter membaca frame streaming upstream, memeriksa hasil PNG, dan menampilkan error. Tidak ada fallback yang menutupi gambar dengan persegi warna; jika mesin gagal, gambar asli tetap ada.
 
@@ -46,7 +48,7 @@ python server/main.py --host 127.0.0.1 --port 8000 --start-instance
 docker compose -f engine/compose.yaml logs -f
 # Matikan mesin (model tetap tersimpan)
 docker compose -f engine/compose.yaml down
-# Perbarui runtime upstream jika diperlukan
+# Unduh ulang runtime dengan digest yang tercantum di compose
 docker compose -f engine/compose.yaml pull
 docker compose -f engine/compose.yaml up -d
 ```

@@ -2,7 +2,8 @@ import base64,io,json,struct,threading,time,tempfile,os
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from PIL import Image,ImageDraw
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
+import re
 
 def png(text, color):
     im=Image.new('RGB',(640,960),color);ImageDraw.Draw(im).text((180,160),text,fill='black',font_size=32);b=io.BytesIO();im.save(b,format='PNG');return b.getvalue()
@@ -37,7 +38,7 @@ with sync_playwright() as p:
         page=ctx.new_page();page.goto('http://127.0.0.1:8765');page.wait_for_timeout(500)
         tabid=sw.evaluate("async () => (await chrome.tabs.query({})).find(t=>t.url?.includes(':8765')).id")
         popup=ctx.new_page();popup.goto(f'chrome-extension://{extid}/popup.html')
-        popup.locator('#checkEngine').click();popup.wait_for_function("document.querySelector('#status').textContent.includes('Server lokal terhubung')")
+        popup.locator('#checkEngine').click();expect(popup.locator('#status')).to_contain_text('Server lokal terhubung')
         print('PASS engine health and offscreen creation')
         assert popup.locator('#apiKey').count()==0
         sw.evaluate('(id) => chrome.tabs.sendMessage(id,{type:"TRANSLATE_VISIBLE"})',tabid)
@@ -69,4 +70,14 @@ with sync_playwright() as p:
         page.mouse.up();page.wait_for_timeout(200);assert page.locator('#page').get_attribute('src')==translated
         print('PASS toolbar short click and press-and-hold')
         print('PASS popup has no API-key controls')
+        page.evaluate('(src) => { document.body.innerHTML = ""; for (let i=0;i<3;i++) { const img = document.createElement("img"); img.src=src; img.width=320; img.height=240; document.body.append(img); } }', original_url)
+        page.wait_for_timeout(500)
+        sw.evaluate('() => chrome.storage.local.set({autoSites:{"127.0.0.1":true}})')
+        page.wait_for_timeout(100)
+        sw.evaluate('() => chrome.storage.local.set({autoSites:{"127.0.0.1":false}})')
+        page.wait_for_function('(src) => [...document.images].some(img => img.src !== src)', arg=original_url)
+        sw.evaluate('() => chrome.storage.local.set({autoSites:{"127.0.0.1":true}})')
+        page.wait_for_function('(src) => [...document.images].every(img => img.src !== src)', arg=original_url)
+        assert len(seen)==4, f"Expected four total jobs, got {len(seen)}"
+        print('PASS Auto pause/resume drains queued pages exactly once')
         ctx.close()

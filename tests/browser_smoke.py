@@ -82,6 +82,33 @@ with sync_playwright() as p:
         page.mouse.move(x,y);page.mouse.down();page.wait_for_timeout(400);assert page.locator('#page').get_attribute('src')==original_url
         page.mouse.up();page.wait_for_timeout(200);assert page.locator('#page').get_attribute('src')==translated
         print('PASS toolbar press-and-hold temporarily reveals original')
+
+        # Selected-area translation must be composited into the page image, not left
+        # as a temporary viewport overlay that disappears during scrolling.
+        sw.evaluate('(id) => chrome.tabs.sendMessage(id,{type:"TOGGLE_ORIGINALS"})',tabid)
+        page.wait_for_function('(original) => document.querySelector("#page").src === original',arg=original_url)
+        sw.evaluate('(id) => chrome.tabs.sendMessage(id,{type:"START_AREA_SELECTION"})',tabid)
+        page.mouse.move(100,100);page.mouse.down();page.mouse.move(300,300,steps=5);page.mouse.up()
+        page.wait_for_function('(original) => document.querySelector("#page").src !== original',arg=original_url,timeout=15000)
+        area_translated=page.locator('#page').get_attribute('src')
+        assert area_translated.startswith('data:image/png;base64,')
+        assert page.locator('#page').evaluate('(img) => [img.naturalWidth,img.naturalHeight]') == [640,960]
+        assert len(seen)==2
+        sw.evaluate('(id) => chrome.tabs.sendMessage(id,{type:"TOGGLE_ORIGINALS"})',tabid)
+        page.wait_for_function('(original) => document.querySelector("#page").src === original',arg=original_url)
+        sw.evaluate('(id) => chrome.tabs.sendMessage(id,{type:"TOGGLE_ORIGINALS"})',tabid)
+        page.wait_for_function('(translated) => document.querySelector("#page").src === translated',arg=area_translated)
+        print('PASS selected-area result is merged into the full page and Original/Result still works')
+
+        # Smoke-check the expanded editor controls in its isolated shadow root.
+        page.locator('#page').hover(position={"x":320,"y":480});page.wait_for_timeout(250)
+        x,y=button_center('Edit');page.mouse.click(x,y);page.wait_for_timeout(250)
+        root=cdp.send('DOM.getDocument',{'depth':-1,'pierce':True})['root']
+        editor_buttons=find_buttons(root)
+        labels=[c.get('nodeValue') for b in editor_buttons for c in b.get('children',[]) if c.get('nodeValue')]
+        assert 'Undo' in labels and 'Redo' in labels and 'Penghapus' in labels, labels
+        print('PASS image editor exposes undo, redo, and transparent eraser controls')
+        page.keyboard.press('Escape');page.wait_for_timeout(100)
         print('PASS popup has no API-key controls')
         page.evaluate('(src) => { document.body.innerHTML = ""; for (let i=0;i<3;i++) { const img = document.createElement("img"); img.src=src; img.width=320; img.height=240; document.body.append(img); } }', original_url)
         page.wait_for_timeout(500)
@@ -91,6 +118,6 @@ with sync_playwright() as p:
         page.wait_for_function('(src) => [...document.images].some(img => img.src !== src)', arg=original_url)
         sw.evaluate('() => chrome.storage.local.set({autoSites:{"127.0.0.1":true}})')
         page.wait_for_function('(src) => [...document.images].every(img => img.src !== src)', arg=original_url)
-        assert len(seen)==4, f"Expected four total jobs, got {len(seen)}"
+        assert len(seen)==5, f"Expected five total jobs (manual, area, and three auto), got {len(seen)}"
         print('PASS Auto pause/resume drains queued pages exactly once')
         ctx.close()

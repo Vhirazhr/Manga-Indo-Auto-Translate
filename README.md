@@ -1,4 +1,4 @@
-# Manga Indo Auto Translate · v3
+# Manga Indo Auto Translate · v3.1.0
 
 Ekstensi Chrome untuk menerjemahkan gambar manga langsung di halaman baca. **Tanpa Gemini, tanpa API key, tanpa layanan terjemahan berbayar.** Mesin AI dijalankan di komputer sendiri menggunakan [Manga Image Translator](https://github.com/zyddnys/manga-image-translator).
 
@@ -20,14 +20,14 @@ Linux/macOS: jalankan `sh start-engine.sh` setelah Docker siap.
 ## Fitur
 
 - Tombol **R**, Auto per hostname, dan prioritas halaman dekat posisi scroll.
-- Deteksi teks, OCR 48px, terjemahan **M2M100 → IND**, inpainting **LaMa**, serta lettering dari mesin upstream.
+- Deteksi teks, OCR 48px, terjemahan offline **M2M100 → IND**, inpainting **LaMa**, serta lettering dari mesin upstream.
 - Klik **Original/Result** untuk mengganti tampilan. Tahan lebih dari 250 ms untuk mengintip gambar asli sementara.
 - **Alt+Shift+E**: Auto. **Alt+Shift+S**: pilih area. **Alt+Shift+O**: asli/hasil.
-- Pilihan area di dalam satu gambar; screenshot area sebagai alternatif ketika gambar tidak dapat diambil.
-- Editor teks, kuas, hapus putih manual, undo, dan download PNG.
+- Pilihan area di dalam satu gambar digabungkan kembali ke gambar penuh, sehingga hasilnya tetap utuh saat halaman di-scroll. Screenshot fallback untuk canvas/reader khusus tetap berupa overlay sementara.
+- Editor menyediakan teks multiline, font, ukuran, bold, alignment, outline, brush, penghapus transparan, Undo/Redo hingga 12 langkah, dan download PNG.
 - Proses panjang disimpan di offscreen document; service worker boleh tidur tanpa membuang pekerjaan. Antrean lintas tab dijalankan satu per satu.
 
-Mesin mendeteksi bahasa sumber otomatis; pilihan sumber manual lama dihapus karena protokol upstream tidak menyediakan parameter itu. Pilihan target tersedia di popup.
+Mesin mendeteksi bahasa sumber otomatis; pilihan sumber manual lama dihapus karena protokol upstream tidak menyediakan parameter itu. Pilihan target tersedia di popup. Profil kualitas memakai deteksi 2048px, OCR 48px, inpainting LaMa 2048px/BF16, arah teks otomatis, dan urutan baca kanan-ke-kiri. Filter non-bubble bernilai 5 membantu mengurangi pemrosesan teks efek suara di luar bubble, tetapi tidak menjamin semua sound effect dipertahankan.
 
 ## Mesin yang dipakai
 
@@ -58,9 +58,9 @@ docker compose -f engine/compose.yaml up -d
 - Proses melewati 20 menit: periksa unduhan/model atau coba area lebih kecil. Jangan langsung mengantrekan banyak halaman saat model pertama dimuat.
 - Izin CDN: scroll sampai gambar muncul, buka kembali popup, lalu klik tombol izin.
 - Refresh tab setelah update ekstensi. Shortcut bisa diubah di `chrome://extensions/shortcuts`.
-- Hasil AI dapat salah membaca nama, teks kecil/dekoratif, vertikal, atau salah mendeteksi area. Kualitas hasil tidak dijamin setara lettering manusia. Gunakan Original dan editor untuk memeriksa hasil.
+- Hasil AI dapat salah membaca nama, teks kecil/dekoratif, tulisan vertikal, atau salah mendeteksi area. Sound effect di luar bubble lebih mungkin dilewati oleh filter, tetapi teks efek suara di dalam bubble tetap dapat diterjemahkan. Kualitas hasil tidak dijamin setara lettering manusia. Gunakan Original dan editor untuk memeriksa hasil.
 - Server mengembalikan gambar akhir, bukan metadata area; ekstensi tidak mengarang jumlah bubble atau menjamin halaman tanpa teks telah diterjemahkan.
-- Reader `<picture>`, object-fit khusus, canvas, atau proteksi situs mungkin memerlukan pilihan area/screenshot. Overlay area dihapus ketika scroll agar tidak menempel pada bagian halaman yang salah.
+- Reader `<picture>`, object-fit khusus, canvas, atau proteksi situs mungkin memerlukan screenshot fallback. Pada fallback ini hasil area masih berupa overlay sementara; integrasi permanen saat ini berlaku untuk area yang dipilih di dalam satu elemen gambar.
 
 ## Privasi dan batas operasional
 

@@ -196,7 +196,7 @@ async function detectAndTranslate(payload, settings, apiKey) {
     "Keep each bubble as a separate region. Do not combine different speakers.",
     "Do not include sound effects, logos, credits, page numbers, signatures or decorative lettering. Leave sound effects untouched.",
     "Do not guess unreadable text. Skip any region that cannot be read with confidence.",
-    "For every region, return a tight rectangle around the lettering INSIDE its bubble or caption, not around the whole panel. Coordinates are normalized 0-1000 relative to the full image: [left, top, width, height].",
+    "For every region, return a rectangle around the usable INTERIOR of the whole speech bubble or caption box, leaving a margin from its outline. Do not return only the tight glyph/text bounds and do not include the surrounding panel. The box must be large enough to typeset the translated line(s). Coordinates are normalized 0-1000 relative to the full image: [left, top, width, height].",
     "Estimate lettering style: color is text ink color, outline is outline color if present, weight is bold or normal, italic true/false.",
     'Return only JSON: {"detectedLanguage":"en","regions":[{"box":[120,100,220,110],"sourceText":"Hello","translation":"Halo","kind":"bubble","style":{"color":"#111111","outline":"#ffffff","weight":"bold","italic":false}}]}',
     'If no readable dialogue/caption is found, return {"detectedLanguage":"unknown","regions":[]}.'
@@ -222,7 +222,7 @@ function buildCleanupPrompt(regions) {
 
   return [
     "Edit this exact manga page image. This is a precise image-restoration task, not a redraw.",
-    "Erase ONLY the original dialogue lettering inside the listed speech-bubble/caption rectangles and reconstruct the background underneath each removed letter.",
+    "Inside each listed bubble/caption interior, identify and erase ONLY the original dialogue lettering. Reconstruct the background underneath the letters. Do not erase the entire interior area.",
     "Preserve the original page composition, dimensions, panel borders, character faces, line art, screentones, shadows, colors, bubble outlines and every non-text pixel as closely as possible.",
     "Do not add any words, letters, symbols, sound effects or replacement text. Do not translate. The extension will typeset the translation afterward.",
     "Do not remove sound effects or text outside the listed rectangles.",

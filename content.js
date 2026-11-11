@@ -135,6 +135,35 @@
     img.addEventListener("pointerenter", () => showToolbar(state));
     img.addEventListener("pointerleave", event => scheduleToolbarHide(event, 140));
 
+    // Match the reader gesture: hold the manga page to peek at the original,
+    // then restore the translated result as soon as the pointer is released.
+    let imageHoldTimer = null;
+    let imageHoldTriggered = false;
+    img.addEventListener("pointerdown", event => {
+      if (event.button !== 0 || !state.showingTranslated || !state.translatedDataUrl) return;
+      imageHoldTriggered = false;
+      imageHoldTimer = setTimeout(() => {
+        imageHoldTriggered = true;
+        showOriginal(state);
+      }, 280);
+      const finishHold = () => {
+        clearTimeout(imageHoldTimer);
+        imageHoldTimer = null;
+        window.removeEventListener("pointerup", finishHold, true);
+        window.removeEventListener("pointercancel", finishHold, true);
+        if (imageHoldTriggered) showTranslated(state);
+        imageHoldTriggered = false;
+      };
+      window.addEventListener("pointerup", finishHold, true);
+      window.addEventListener("pointercancel", finishHold, true);
+    });
+    img.addEventListener("pointerleave", () => {
+      if (imageHoldTimer && !imageHoldTriggered) {
+        clearTimeout(imageHoldTimer);
+        imageHoldTimer = null;
+      }
+    });
+
     img.addEventListener("load", () => {
       if (!state.showingTranslated && img.currentSrc && img.currentSrc !== state.originalSrc) {
         updateOriginalSource(state);

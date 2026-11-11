@@ -75,7 +75,9 @@
     if (!(img instanceof HTMLImageElement)) return false;
     if (img.closest("#manga-indo-ui-host")) return false;
     if (!img.complete || !img.naturalWidth || !img.naturalHeight) return false;
-    if (img.naturalWidth < 260 || img.naturalHeight < 220) return false;
+    // Tall manga pages and wide webtoon panels both qualify. Excluding very
+    // short banners keeps most navigation/ad artwork out of the candidate list.
+    if (img.naturalWidth < 260 || img.naturalHeight < 160) return false;
 
     const rect = img.getBoundingClientRect();
     if (rect.width < 100 || rect.height < 100) return false;
@@ -83,7 +85,8 @@
     if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) return false;
 
     const ratio = img.naturalHeight / img.naturalWidth;
-    return ratio > 0.45 || img.naturalHeight > 1200;
+    return ratio > 0.35 || img.naturalHeight > 1200 ||
+      (img.naturalWidth >= 700 && img.naturalHeight >= 160);
   }
 
   function containsPoint(rect, x, y) {

@@ -8,6 +8,7 @@ const siteName = document.getElementById("siteName");
 
 let activeTab = null;
 let activeHost = "";
+let detectedOrigins = [];
 
 function setStatus(text, kind) {
   statusBox.textContent = text;
@@ -40,6 +41,25 @@ async function loadPopup() {
     const url = new URL(activeTab.url);
     activeHost = url.hostname;
     siteName.textContent = "Situs aktif: " + activeHost;
+    try {
+      const scan = await chrome.scripting.executeScript({
+        target: { tabId: activeTab.id },
+        func: () => {
+          const origins = new Set();
+          try { origins.add(location.origin); } catch (_) {}
+          document.querySelectorAll("img").forEach(img => {
+            try {
+              const imageUrl = new URL(img.currentSrc || img.src, location.href);
+              if (imageUrl.protocol === "http:" || imageUrl.protocol === "https:") origins.add(imageUrl.origin);
+            } catch (_) {}
+          });
+          return Array.from(origins).slice(0, 12);
+        }
+      });
+      detectedOrigins = scan?.[0]?.result || [url.origin];
+    } catch (_) {
+      detectedOrigins = [url.origin];
+    }
   } else {
     siteName.textContent = "Buka situs manga terlebih dahulu.";
   }
@@ -87,36 +107,15 @@ document.getElementById("clearKey").addEventListener("click", async () => {
 
 document.getElementById("grantAccess").addEventListener("click", async () => {
   try {
-    activeTab = activeTab || await getActiveTab();
-    if (!activeTab?.id || !/^https?:/i.test(activeTab.url || "")) {
-      setStatus("Buka tab situs manga dahulu.", "error");
+    if (!activeTab?.id || !detectedOrigins.length) {
+      setStatus("Buka tab manga lalu buka kembali popup extension.", "error");
       return;
     }
 
-    setStatus("Memeriksa domain gambar pada halaman ini...");
-    const scan = await chrome.scripting.executeScript({
-      target: { tabId: activeTab.id },
-      func: () => {
-        const origins = new Set();
-        try { origins.add(location.origin); } catch (_) {}
-        document.querySelectorAll("img").forEach(img => {
-          const raw = img.currentSrc || img.src;
-          try {
-            const url = new URL(raw, location.href);
-            if (url.protocol === "http:" || url.protocol === "https:") origins.add(url.origin);
-          } catch (_) {}
-        });
-        return Array.from(origins).slice(0, 12);
-      }
-    });
-
-    const origins = (scan?.[0]?.result || []).map(origin => origin + "/*");
-    if (!origins.length) {
-      setStatus("Tidak menemukan domain situs atau gambar yang bisa diberi izin.", "error");
-      return;
-    }
-
+    // Request optional host permissions as the first asynchronous action in this click handler.
+    const origins = detectedOrigins.map(origin => origin + "/*");
     const granted = await chrome.permissions.request({ origins });
+
     if (!granted) {
       setStatus("Izin tidak diberikan. Extension belum bisa mengambil gambar dari situs ini.", "error");
       return;

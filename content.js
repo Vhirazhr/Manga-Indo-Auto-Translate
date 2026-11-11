@@ -1,229 +1,695 @@
 (() => {
-  if (window.__MANGA_INDO_AUTO_TRANSLATE_V2__) return;
-  window.__MANGA_INDO_AUTO_TRANSLATE_V2__ = true;
-  window.__MANGA_INDO_AUTO_TRANSLATE_V1__ = true;
+  if (globalThis.__MANGA_INDO_RUNEMANGA_V2__) return;
+  globalThis.__MANGA_INDO_RUNEMANGA_V2__ = true;
 
+  const imageStates = new WeakMap();
+  const stateList = new Set();
+  const queue = [];
+  let activeState = null;
   let autoEnabled = false;
-  let timer = null;
+  let processingQueue = false;
+  let selectionMode = false;
+  let selectionStart = null;
+  let selectionBox = null;
+  let areaResult = null;
+  let uiHost = null;
+  let uiRoot = null;
+  let toolbar = null;
+  let toastNode = null;
   let toastTimer = null;
-  let inFlight = false;
-  let rerunRequested = false;
-  let host = null;
-  let shadow = null;
-  let overlayRoot = null;
+  let scanTimer = null;
 
-  function ensureOverlay() {
-    if (host?.isConnected) return;
+  const siteHost = location.hostname;
+  const AUTO_KEY = "autoSites";
 
-    host = document.createElement("div");
-    host.id = "manga-indo-auto-translate-host";
-    host.style.cssText = [
-      "position:fixed",
-      "inset:0",
-      "width:100vw",
-      "height:100vh",
-      "z-index:2147483647",
-      "pointer-events:none"
-    ].join(";");
-
-    shadow = host.attachShadow({ mode: "closed" });
-
-    const style = document.createElement("style");
-    style.textContent = `
-      :host { all: initial; }
-      .root {
-        position: fixed; inset: 0; width: 100vw; height: 100vh;
-        pointer-events: none; overflow: hidden;
-      }
-      .bubble {
-        position: absolute; box-sizing: border-box; display: flex;
-        align-items: center; justify-content: center;
-        padding: 2px 5px; overflow: hidden; text-align: center;
-        white-space: pre-wrap; overflow-wrap: anywhere; word-break: normal;
-        color: #111 !important; background: rgba(255,255,255,.97) !important;
-        border: 1px solid rgba(0,0,0,.12); border-radius: 10px;
-        font-family: Arial, "Noto Sans", sans-serif;
-        font-weight: 700; line-height: 1.12; text-shadow: none;
-        box-shadow: 0 1px 3px rgba(0,0,0,.16);
-      }
-      .toast {
-        position: absolute; top: 14px; right: 14px; max-width: min(360px, calc(100vw - 28px));
-        box-sizing: border-box; padding: 9px 12px; border-radius: 9px;
-        color: #fff; background: rgba(25, 25, 28, .92);
-        font: 12px/1.45 Arial, sans-serif; box-shadow: 0 2px 10px rgba(0,0,0,.2);
-        overflow-wrap: anywhere;
-      }
-      .toast.error { background: rgba(150, 35, 35, .96); }
-      .toast.success { background: rgba(25, 105, 65, .96); }
-      .toast.warning { background: rgba(130, 82, 20, .96); }
-    `;
-
-    overlayRoot = document.createElement("div");
-    overlayRoot.className = "root";
-    shadow.append(style, overlayRoot);
-    document.documentElement.appendChild(host);
+  function sendStatus(text, kind) {
+    showToast(text, kind || "info");
   }
 
-  function hideOverlay() {
-    if (host) host.style.display = "none";
-  }
-
-  function clearOverlay() {
-    if (overlayRoot) overlayRoot.replaceChildren();
-    clearTimeout(toastTimer);
-    hideOverlay();
-  }
-
-  function showToast(message, kind = "info", duration = 2800) {
-    ensureOverlay();
-
-    let toast = overlayRoot.querySelector(".toast");
-    if (!toast) {
-      toast = document.createElement("div");
-      toast.className = "toast";
-      overlayRoot.appendChild(toast);
+  function showToast(text, kind) {
+    ensureUI();
+    if (!toastNode) {
+      toastNode = document.createElement("div");
+      toastNode.className = "mita-toast";
+      uiRoot.appendChild(toastNode);
     }
-
-    toast.className = "toast" + (kind ? " " + kind : "");
-    toast.textContent = String(message || "");
-    host.style.display = "block";
-
+    toastNode.className = "mita-toast " + (kind || "");
+    toastNode.textContent = String(text || "");
+    toastNode.style.display = "block";
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => {
-      toast?.remove();
-      if (!overlayRoot?.querySelector(".bubble")) hideOverlay();
-    }, duration);
+      if (toastNode) toastNode.style.display = "none";
+    }, 4200);
   }
 
-  function clamp(value, min, max) {
-    return Math.max(min, Math.min(max, value));
+  function ensureUI() {
+    if (uiHost && uiHost.isConnected) return;
+
+    uiHost = document.createElement("div");
+    uiHost.id = "manga-indo-ui-host";
+    uiHost.style.cssText = "position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;pointer-events:none;";
+    uiRoot = uiHost.attachShadow({ mode: "closed" });
+
+    const style = document.createElement("style");
+    style.textContent = [
+      ":host{all:initial}",
+      ".mita-toolbar{position:fixed;display:flex;gap:5px;align-items:center;padding:6px;background:rgba(18,23,32,.96);border:1px solid #465164;border-radius:11px;box-shadow:0 4px 18px rgba(0,0,0,.35);pointer-events:auto;font:12px Arial,sans-serif;z-index:3;white-space:nowrap}",
+      ".mita-toolbar button{border:0;border-radius:7px;padding:7px 9px;background:#303b4d;color:#fff;font:600 12px Arial,sans-serif;cursor:pointer}",
+      ".mita-toolbar button:hover{background:#465875}",
+      ".mita-toolbar .mita-main{background:#2563eb;color:#fff;font-weight:800;min-width:31px}",
+      ".mita-toolbar .mita-on{background:#147d50}",
+      ".mita-toast{position:fixed;right:14px;top:14px;max-width:min(390px,calc(100vw - 28px));padding:10px 13px;border-radius:9px;background:rgba(23,29,39,.96);color:#fff;font:12px/1.45 Arial,sans-serif;box-shadow:0 3px 16px rgba(0,0,0,.3);pointer-events:none;z-index:8;display:none;overflow-wrap:anywhere}",
+      ".mita-toast.error{background:#9f2828}.mita-toast.success{background:#176b45}.mita-toast.warning{background:#805415}",
+      ".mita-select-layer{position:fixed;inset:0;z-index:10;pointer-events:auto;cursor:crosshair;background:rgba(20,35,60,.10)}",
+      ".mita-select-box{position:fixed;border:2px dashed #36a3ff;background:rgba(45,135,255,.16);pointer-events:none}",
+      ".mita-area-result{position:fixed;z-index:9;object-fit:fill;pointer-events:none;box-shadow:0 0 0 2px #2563eb}",
+      ".mita-page-badge{position:fixed;z-index:2;pointer-events:none;border-radius:5px;background:rgba(22,101,52,.92);color:white;padding:3px 6px;font:11px Arial,sans-serif}"
+    ].join("\n");
+
+    uiRoot.appendChild(style);
+    document.documentElement.appendChild(uiHost);
   }
 
-  function getFontSize(text, width, height) {
-    const characters = Array.from(text).length;
-    const estimatedCharsPerLine = Math.max(5, Math.floor(width / 8));
-    const estimatedLines = Math.max(1, Math.ceil(characters / estimatedCharsPerLine));
-    const byHeight = height / (estimatedLines * 1.35);
-    const byWidth = width / Math.max(7, Math.min(characters, 24) * 0.58);
-    return clamp(Math.min(24, byHeight, byWidth), 9, 24);
+  function isCandidateImage(img) {
+    if (!(img instanceof HTMLImageElement)) return false;
+    if (img.closest("#manga-indo-ui-host")) return false;
+    if (!img.complete || !img.naturalWidth || !img.naturalHeight) return false;
+    if (img.naturalWidth < 260 || img.naturalHeight < 220) return false;
+
+    const rect = img.getBoundingClientRect();
+    if (rect.width < 100 || rect.height < 100) return false;
+    const style = getComputedStyle(img);
+    if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) return false;
+
+    const ratio = img.naturalHeight / img.naturalWidth;
+    return ratio > 0.45 || img.naturalHeight > 1200;
   }
 
-  function renderBubbles(bubbles) {
-    ensureOverlay();
-    overlayRoot.replaceChildren();
+  function makeState(img) {
+    let state = imageStates.get(img);
+    if (state) return state;
 
-    for (const item of (bubbles || [])) {
-      const x = clamp(Number(item.x) || 0, 0, 999);
-      const y = clamp(Number(item.y) || 0, 0, 999);
-      const w = clamp(Number(item.w) || 0, 0, 1000 - x);
-      const h = clamp(Number(item.h) || 0, 0, 1000 - y);
-      const text = String(item.text || "").trim();
+    const source = img.currentSrc || img.src;
+    state = {
+      img,
+      originalSrc: source,
+      originalSrcAttr: img.getAttribute("src"),
+      originalSrcset: img.getAttribute("srcset"),
+      originalSizes: img.getAttribute("sizes"),
+      translatedDataUrl: "",
+      showingTranslated: false,
+      busy: false,
+      status: "idle",
+      observerSeen: false
+    };
 
-      if (!text || w < 2 || h < 2) continue;
+    imageStates.set(img, state);
+    stateList.add(state);
 
-      const el = document.createElement("div");
-      el.className = "bubble";
-      el.textContent = text;
-      el.style.left = (x / 10) + "%";
-      el.style.top = (y / 10) + "%";
-      el.style.width = (w / 10) + "%";
-      el.style.height = (h / 10) + "%";
+    img.addEventListener("pointerenter", () => showToolbar(state));
+    img.addEventListener("pointerleave", () => {
+      setTimeout(() => {
+        if (!toolbar || !toolbar.matches(":hover")) hideToolbar();
+      }, 140);
+    });
 
-      const pixelWidth = (w / 1000) * window.innerWidth;
-      const pixelHeight = (h / 1000) * window.innerHeight;
-      el.style.fontSize = getFontSize(text, pixelWidth, pixelHeight) + "px";
-      overlayRoot.appendChild(el);
+    img.addEventListener("load", () => {
+      if (!state.showingTranslated && img.currentSrc && img.currentSrc !== state.originalSrc) {
+        updateOriginalSource(state);
+      }
+      scanImages();
+    });
+
+    if (intersectionObserver) intersectionObserver.observe(img);
+    return state;
+  }
+
+  function updateOriginalSource(state) {
+    const img = state.img;
+    if (state.showingTranslated) return;
+    state.originalSrc = img.currentSrc || img.src;
+    state.originalSrcAttr = img.getAttribute("src");
+    state.originalSrcset = img.getAttribute("srcset");
+    state.originalSizes = img.getAttribute("sizes");
+    state.translatedDataUrl = "";
+    state.status = "idle";
+  }
+
+  function ensureToolbar() {
+    ensureUI();
+    if (toolbar) return toolbar;
+
+    toolbar = document.createElement("div");
+    toolbar.className = "mita-toolbar";
+    toolbar.addEventListener("pointerenter", () => {});
+    toolbar.addEventListener("pointerleave", () => {
+      setTimeout(() => {
+        if (activeState && !activeState.img.matches(":hover")) hideToolbar();
+      }, 160);
+    });
+
+    const translate = document.createElement("button");
+    translate.className = "mita-main";
+    translate.textContent = "R";
+    translate.title = "Terjemahkan halaman ini";
+    translate.addEventListener("click", () => {
+      if (activeState) translateImage(activeState, "manual");
+    });
+
+    const auto = document.createElement("button");
+    auto.textContent = "Auto";
+    auto.title = "Aktif/nonaktifkan otomatis untuk situs ini";
+    auto.addEventListener("click", toggleSiteAuto);
+
+    const original = document.createElement("button");
+    original.textContent = "Original";
+    original.title = "Tekan dan tahan untuk melihat gambar asli";
+    original.addEventListener("click", () => {
+      if (activeState) toggleOriginal(activeState);
+    });
+    original.addEventListener("pointerdown", () => {
+      if (activeState && activeState.translatedDataUrl) showOriginal(activeState);
+    });
+    ["pointerup", "pointercancel", "pointerleave"].forEach(name => {
+      original.addEventListener(name, () => {
+        if (activeState && activeState.translatedDataUrl) showTranslated(activeState);
+      });
+    });
+
+    const edit = document.createElement("button");
+    edit.textContent = "Edit";
+    edit.title = "Edit gambar";
+    edit.addEventListener("click", () => {
+      if (activeState) openEditor(activeState);
+    });
+
+    toolbar.append(translate, auto, original, edit);
+    uiRoot.appendChild(toolbar);
+    return toolbar;
+  }
+
+  function showToolbar(state) {
+    if (!isCandidateImage(state.img)) return;
+    activeState = state;
+    ensureToolbar();
+    toolbar.style.display = "flex";
+    updateToolbarPosition();
+    updateToolbarState();
+  }
+
+  function hideToolbar() {
+    if (toolbar) toolbar.style.display = "none";
+    activeState = null;
+  }
+
+  function updateToolbarState() {
+    if (!toolbar) return;
+    const buttons = toolbar.querySelectorAll("button");
+    if (buttons[1]) {
+      buttons[1].textContent = autoEnabled ? "Auto ON" : "Auto";
+      buttons[1].classList.toggle("mita-on", autoEnabled);
     }
-
-    host.style.display = overlayRoot.childElementCount ? "block" : "none";
+    if (buttons[2]) buttons[2].textContent = activeState?.showingTranslated ? "Original" : "Result";
+    if (buttons[0]) {
+      buttons[0].textContent = activeState?.busy ? "..." : "R";
+      buttons[0].disabled = Boolean(activeState?.busy);
+    }
   }
 
-  async function translateNow() {
-    if (inFlight) {
-      rerunRequested = true;
+  function updateToolbarPosition() {
+    if (!toolbar || !activeState || toolbar.style.display === "none") return;
+    const rect = activeState.img.getBoundingClientRect();
+    if (rect.width < 20 || rect.height < 20) {
+      hideToolbar();
       return;
     }
 
-    inFlight = true;
-    hideOverlay();
+    const width = toolbar.offsetWidth || 230;
+    const left = Math.max(8, Math.min(window.innerWidth - width - 8, rect.right - width - 6));
+    const top = Math.max(8, Math.min(window.innerHeight - 46, rect.top + 8));
+    toolbar.style.left = left + "px";
+    toolbar.style.top = top + "px";
+  }
+
+  function siteSettings() {
+    return chrome.storage.local.get([AUTO_KEY]).then(data => data[AUTO_KEY] || {});
+  }
+
+  async function loadSiteAuto() {
+    const settings = await siteSettings();
+    autoEnabled = Boolean(settings[siteHost]);
+    updateToolbarState();
+    if (autoEnabled) enqueueNearViewport();
+  }
+
+  async function setSiteAuto(enabled) {
+    const settings = await siteSettings();
+    settings[siteHost] = Boolean(enabled);
+    await chrome.storage.local.set({ [AUTO_KEY]: settings });
+    autoEnabled = Boolean(enabled);
+    updateToolbarState();
+
+    if (autoEnabled) {
+      scanImages();
+      enqueueNearViewport();
+      showToast("Auto-translate aktif untuk " + siteHost + ".", "success");
+    } else {
+      queue.length = 0;
+      showToast("Auto-translate dimatikan untuk " + siteHost + ".");
+    }
+  }
+
+  async function toggleSiteAuto() {
+    await setSiteAuto(!autoEnabled);
+  }
+
+  function imageDistance(state) {
+    const rect = state.img.getBoundingClientRect();
+    const center = window.innerHeight / 2;
+    return Math.abs((rect.top + rect.bottom) / 2 - center);
+  }
+
+  function enqueue(state) {
+    if (!autoEnabled || state.busy || state.status === "done" || state.status === "queued") return;
+    state.status = "queued";
+    queue.push(state);
+    queue.sort((a, b) => imageDistance(a) - imageDistance(b));
+    processQueue();
+  }
+
+  async function processQueue() {
+    if (processingQueue || !autoEnabled) return;
+    processingQueue = true;
+
+    while (queue.length && autoEnabled) {
+      queue.sort((a, b) => imageDistance(a) - imageDistance(b));
+      const state = queue.shift();
+      if (!state || state.status !== "queued") continue;
+      await translateImage(state, "auto");
+    }
+
+    processingQueue = false;
+  }
+
+  function enqueueNearViewport() {
+    const margin = 1000;
+    for (const state of stateList) {
+      const rect = state.img.getBoundingClientRect();
+      if (rect.bottom >= -margin && rect.top <= window.innerHeight + margin) enqueue(state);
+    }
+  }
+
+  async function readBlobUrl(url) {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function imageRequestSource(state) {
+    const url = state.originalSrc;
+    if (!url) throw new Error("Alamat gambar tidak ditemukan.");
+    if (url.startsWith("data:")) return { imageDataUrl: url };
+    if (url.startsWith("blob:")) return { imageDataUrl: await readBlobUrl(url) };
+    return { imageUrl: url };
+  }
+
+  async function translateImage(state, source) {
+    if (!state || state.busy || state.status === "done") return;
+    state.busy = true;
+    state.status = "processing";
+    if (activeState === state) updateToolbarState();
+
+    showToast(source === "auto" ? "Menerjemahkan halaman manga yang dekat dengan posisi bacamu..." : "Mengirim gambar ke Gemini untuk diterjemahkan...", "info", 6000);
 
     try {
-      // Let the browser remove the overlay before capturing the manga viewport.
-      await new Promise(resolve => setTimeout(resolve, 100));
+      const imageSource = await imageRequestSource(state);
+      const response = await chrome.runtime.sendMessage({
+        type: "PROCESS_MANGA_IMAGE",
+        ...imageSource
+      });
 
-      const response = await chrome.runtime.sendMessage({ type: "TRANSLATE_VIEW" });
-      if (!response?.ok) {
-        showToast(response?.error || "Terjemahan gagal. Coba lagi.", "error", 4200);
+      if (!response?.ok) throw new Error(response?.error || "Proses terjemahan gagal.");
+      if (response.noText || !response.dataUrl) {
+        state.status = "empty";
+        showToast("Tidak ada dialog yang terbaca pada gambar ini.", "warning");
         return;
       }
 
-      const bubbles = Array.isArray(response.bubbles) ? response.bubbles : [];
-      renderBubbles(bubbles);
+      state.translatedDataUrl = response.dataUrl;
+      state.status = "done";
+      showTranslated(state);
 
-      if (bubbles.length) {
-        showToast("Selesai. " + bubbles.length + " area dialog diterjemahkan.", "success");
-      } else {
-        showToast("Tidak ada dialog yang terbaca pada layar ini.", "warning");
-      }
+      const warning = response.cleanupWarning ? " " + response.cleanupWarning : "";
+      showToast("Halaman selesai diterjemahkan (" + response.regions.length + " area)." + warning, response.cleanupWarning ? "warning" : "success", 5200);
     } catch (error) {
-      showToast(error?.message || "Terjadi kesalahan saat menerjemahkan.", "error", 4200);
+      state.status = "error";
+      showToast(error?.message || "Terjadi kesalahan saat menerjemahkan.", "error", 6500);
     } finally {
-      inFlight = false;
-
-      if (rerunRequested && autoEnabled) {
-        rerunRequested = false;
-        scheduleTranslation();
-      } else {
-        rerunRequested = false;
-      }
+      state.busy = false;
+      if (activeState === state) updateToolbarState();
     }
   }
 
-  function scheduleTranslation() {
-    if (!autoEnabled) return;
+  function showTranslated(state) {
+    if (!state?.translatedDataUrl) return;
+    const img = state.img;
+    img.removeAttribute("srcset");
+    img.removeAttribute("sizes");
+    img.src = state.translatedDataUrl;
+    state.showingTranslated = true;
+    if (activeState === state) updateToolbarState();
+  }
 
-    hideOverlay();
-    clearTimeout(timer);
+  function showOriginal(state) {
+    if (!state) return;
+    const img = state.img;
+    if (state.originalSrcAttr === null) img.removeAttribute("src");
+    else img.setAttribute("src", state.originalSrcAttr);
+    if (state.originalSrcset === null) img.removeAttribute("srcset");
+    else img.setAttribute("srcset", state.originalSrcset);
+    if (state.originalSizes === null) img.removeAttribute("sizes");
+    else img.setAttribute("sizes", state.originalSizes);
+    if (!state.originalSrcAttr && state.originalSrc) img.src = state.originalSrc;
+    state.showingTranslated = false;
+    if (activeState === state) updateToolbarState();
+  }
 
-    if (inFlight) {
-      rerunRequested = true;
+  function toggleOriginal(state) {
+    if (!state?.translatedDataUrl) {
+      showToast("Terjemahkan halaman ini terlebih dahulu.", "warning");
+      return;
+    }
+    if (state.showingTranslated) showOriginal(state);
+    else showTranslated(state);
+  }
+
+  function toggleAllOriginals() {
+    const translated = Array.from(stateList).filter(state => state.translatedDataUrl);
+    if (!translated.length) {
+      showToast("Belum ada halaman yang diterjemahkan.", "warning");
+      return;
+    }
+    const shouldShowOriginal = translated.some(state => state.showingTranslated);
+    translated.forEach(state => shouldShowOriginal ? showOriginal(state) : showTranslated(state));
+    showToast(shouldShowOriginal ? "Menampilkan gambar asli." : "Menampilkan hasil terjemahan.");
+  }
+
+  async function openEditor(state) {
+    if (!globalThis.MangaIndoEditor) {
+      showToast("Editor belum siap. Muat ulang halaman lalu coba lagi.", "error");
       return;
     }
 
-    timer = setTimeout(() => {
-      translateNow();
-    }, 1100);
+    try {
+      let dataUrl = state.translatedDataUrl;
+      if (!dataUrl) {
+        const source = await imageRequestSource(state);
+        const response = await chrome.runtime.sendMessage({ type: "GET_IMAGE_DATA", ...source });
+        if (!response?.ok) throw new Error(response?.error || "Gagal membuka gambar.");
+        dataUrl = response.dataUrl;
+      }
+
+      globalThis.MangaIndoEditor.open({
+        imageUrl: dataUrl,
+        onSave: data => {
+          state.translatedDataUrl = data;
+          state.status = "done";
+          showTranslated(state);
+          showToast("Edit gambar tersimpan pada halaman.", "success");
+        },
+        onDownload: data => {
+          chrome.runtime.sendMessage({
+            type: "DOWNLOAD_IMAGE",
+            dataUrl: data,
+            filename: "manga-indo-edited.png"
+          }).then(result => {
+            if (!result?.ok) showToast(result?.error || "Gagal mengunduh gambar.", "error");
+          });
+        }
+      });
+    } catch (error) {
+      showToast(error?.message || "Editor gagal dibuka.", "error");
+    }
   }
 
-  function onScrollOrResize() {
-    scheduleTranslation();
+  function findStateForContext(srcUrl) {
+    if (srcUrl) {
+      for (const state of stateList) {
+        if (state.originalSrc === srcUrl || state.img.currentSrc === srcUrl || state.img.src === srcUrl) return state;
+      }
+    }
+    if (activeState) return activeState;
+
+    const candidates = Array.from(document.querySelectorAll("img")).filter(isCandidateImage);
+    if (!candidates.length) return null;
+    const center = window.innerHeight / 2;
+    candidates.sort((a, b) => {
+      const ar = a.getBoundingClientRect();
+      const br = b.getBoundingClientRect();
+      return Math.abs((ar.top + ar.bottom) / 2 - center) - Math.abs((br.top + br.bottom) / 2 - center);
+    });
+    return makeState(candidates[0]);
   }
 
-  // Capture scroll events from nested manga reader containers as well as the page.
-  document.addEventListener("scroll", onScrollOrResize, { passive: true, capture: true });
-  window.addEventListener("resize", onScrollOrResize, { passive: true });
+  function startAreaSelection() {
+    ensureUI();
+    if (selectionMode) return;
+    selectionMode = true;
+    selectionStart = null;
+    selectionBox = document.createElement("div");
+    selectionBox.className = "mita-select-box";
+
+    const layer = document.createElement("div");
+    layer.className = "mita-select-layer";
+    layer.appendChild(selectionBox);
+    uiRoot.appendChild(layer);
+    showToast("Tarik mouse untuk memilih area manga. Tekan Esc untuk batal.", "info", 8000);
+
+    layer.addEventListener("pointerdown", event => {
+      event.preventDefault();
+      selectionStart = { x: event.clientX, y: event.clientY };
+      updateSelectionBox(event.clientX, event.clientY);
+      layer.setPointerCapture(event.pointerId);
+    });
+
+    layer.addEventListener("pointermove", event => {
+      if (!selectionStart) return;
+      updateSelectionBox(event.clientX, event.clientY);
+    });
+
+    layer.addEventListener("pointerup", async event => {
+      if (!selectionStart) return;
+      const start = selectionStart;
+      const end = { x: event.clientX, y: event.clientY };
+      const rect = {
+        left: Math.min(start.x, end.x),
+        top: Math.min(start.y, end.y),
+        width: Math.abs(end.x - start.x),
+        height: Math.abs(end.y - start.y)
+      };
+      layer.remove();
+      selectionMode = false;
+      selectionStart = null;
+
+      if (rect.width < 30 || rect.height < 30) {
+        showToast("Area terlalu kecil. Pilih area yang lebih besar.", "warning");
+        return;
+      }
+      await translateSelectedArea(rect);
+    });
+  }
+
+  function updateSelectionBox(x, y) {
+    if (!selectionStart || !selectionBox) return;
+    const left = Math.min(selectionStart.x, x);
+    const top = Math.min(selectionStart.y, y);
+    const width = Math.abs(x - selectionStart.x);
+    const height = Math.abs(y - selectionStart.y);
+    selectionBox.style.left = left + "px";
+    selectionBox.style.top = top + "px";
+    selectionBox.style.width = width + "px";
+    selectionBox.style.height = height + "px";
+  }
+
+  async function translateSelectedArea(rect) {
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    let state = null;
+
+    for (const candidate of stateList) {
+      const bounds = candidate.img.getBoundingClientRect();
+      if (centerX >= bounds.left && centerX <= bounds.right && centerY >= bounds.top && centerY <= bounds.bottom) {
+        state = candidate;
+        break;
+      }
+    }
+
+    if (!state) {
+      showToast("Area harus berada di dalam satu gambar manga.", "warning");
+      return;
+    }
+
+    const bounds = state.img.getBoundingClientRect();
+    const area = {
+      x: Math.max(0, (rect.left - bounds.left) / bounds.width),
+      y: Math.max(0, (rect.top - bounds.top) / bounds.height),
+      width: Math.min(1, rect.width / bounds.width),
+      height: Math.min(1, rect.height / bounds.height)
+    };
+
+    if (area.width <= 0 || area.height <= 0) return;
+
+    showToast("Menerjemahkan area yang kamu pilih...", "info", 6000);
+    try {
+      const source = await imageRequestSource(state);
+      const response = await chrome.runtime.sendMessage({
+        type: "PROCESS_MANGA_IMAGE",
+        ...source,
+        area
+      });
+
+      if (!response?.ok) throw new Error(response?.error || "Gagal menerjemahkan area.");
+      if (response.noText || !response.dataUrl) {
+        showToast("Tidak ada teks yang terbaca di area ini.", "warning");
+        return;
+      }
+
+      if (areaResult) areaResult.remove();
+      areaResult = document.createElement("img");
+      areaResult.className = "mita-area-result";
+      areaResult.src = response.dataUrl;
+      areaResult.style.left = rect.left + "px";
+      areaResult.style.top = rect.top + "px";
+      areaResult.style.width = rect.width + "px";
+      areaResult.style.height = rect.height + "px";
+      uiRoot.appendChild(areaResult);
+      showToast("Area berhasil diterjemahkan. Hasil ditampilkan di atas gambar.", "success");
+    } catch (error) {
+      showToast(error?.message || "Terjemahan area gagal.", "error", 6500);
+    }
+  }
+
+  function cancelAreaSelection() {
+    if (!selectionMode) return;
+    selectionMode = false;
+    selectionStart = null;
+    const layer = uiRoot?.querySelector(".mita-select-layer");
+    if (layer) layer.remove();
+    showToast("Pemilihan area dibatalkan.");
+  }
+
+  function scanImages() {
+    clearTimeout(scanTimer);
+    scanTimer = setTimeout(() => {
+      const images = document.querySelectorAll("img");
+      images.forEach(img => {
+        if (!isCandidateImage(img)) return;
+        const state = makeState(img);
+        if (!state.observerSeen && intersectionObserver) {
+          intersectionObserver.observe(img);
+          state.observerSeen = true;
+        }
+      });
+      if (autoEnabled) enqueueNearViewport();
+    }, 180);
+  }
+
+  const intersectionObserver = "IntersectionObserver" in window
+    ? new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting || !autoEnabled) return;
+          const state = imageStates.get(entry.target);
+          if (state) enqueue(state);
+        });
+      }, { root: null, rootMargin: "900px 0px", threshold: 0.01 })
+    : null;
+
+  window.addEventListener("scroll", () => {
+    updateToolbarPosition();
+    if (areaResult) {
+      areaResult.remove();
+      areaResult = null;
+    }
+    if (autoEnabled) enqueueNearViewport();
+  }, { passive: true, capture: true });
+
+  window.addEventListener("resize", updateToolbarPosition, { passive: true });
+
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape") cancelAreaSelection();
+  }, true);
+
+  const mutationObserver = new MutationObserver(mutations => {
+    let needsScan = false;
+    for (const mutation of mutations) {
+      if (mutation.type === "childList") needsScan = true;
+      if (mutation.type === "attributes" && mutation.target instanceof HTMLImageElement) {
+        const state = imageStates.get(mutation.target);
+        if (state && !state.showingTranslated && mutation.attributeName === "src") {
+          updateOriginalSource(state);
+        }
+        needsScan = true;
+      }
+    }
+    if (needsScan) scanImages();
+  });
+
+  mutationObserver.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["src", "srcset"]
+  });
 
   chrome.runtime.onMessage.addListener(message => {
-    if (message?.type === "START") {
-      autoEnabled = Boolean(message.auto);
-      clearTimeout(timer);
-      rerunRequested = false;
-      translateNow();
-    } else if (message?.type === "SET_AUTO") {
-      autoEnabled = Boolean(message.enabled);
-      if (autoEnabled) {
-        scheduleTranslation();
-      } else {
-        clearTimeout(timer);
-        rerunRequested = false;
+    if (!message?.type) return;
+
+    if (message.type === "SET_SITE_AUTO") {
+      setSiteAuto(Boolean(message.enabled));
+    } else if (message.type === "TRANSLATE_VISIBLE") {
+      const visible = Array.from(stateList).filter(state => {
+        const rect = state.img.getBoundingClientRect();
+        return rect.bottom > 0 && rect.top < window.innerHeight;
+      });
+      if (!visible.length) {
+        showToast("Tidak menemukan gambar manga yang terlihat. Scroll ke halaman manga dahulu.", "warning");
+        return;
       }
-    } else if (message?.type === "TRANSLATE_NOW") {
-      translateNow();
-    } else if (message?.type === "STOP") {
-      autoEnabled = false;
-      clearTimeout(timer);
-      rerunRequested = false;
-      clearOverlay();
+      visible.forEach(state => translateImage(state, "manual"));
+    } else if (message.type === "START_AREA_SELECTION") {
+      startAreaSelection();
+    } else if (message.type === "TOGGLE_ORIGINALS") {
+      toggleAllOriginals();
+    } else if (message.type === "TOGGLE_SITE_AUTO") {
+      toggleSiteAuto();
+    } else if (message.type === "TRANSLATE_CONTEXT_IMAGE") {
+      const state = findStateForContext(message.srcUrl);
+      if (state) translateImage(state, "context");
+      else showToast("Tidak menemukan gambar manga untuk diterjemahkan.", "warning");
+    } else if (message.type === "EDIT_CONTEXT_IMAGE") {
+      const state = findStateForContext(message.srcUrl);
+      if (state) openEditor(state);
+      else showToast("Tidak menemukan gambar untuk diedit.", "warning");
     }
   });
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== "local" || !changes[AUTO_KEY]) return;
+    const next = changes[AUTO_KEY].newValue || {};
+    const enabled = Boolean(next[siteHost]);
+    if (enabled !== autoEnabled) {
+      autoEnabled = enabled;
+      updateToolbarState();
+      if (autoEnabled) enqueueNearViewport();
+      else queue.length = 0;
+    }
+  });
+
+  loadSiteAuto();
+  scanImages();
 })();

@@ -8,12 +8,17 @@ export function engineConfig(target = "id") {
   if (!LANGUAGES[target]) throw new Error("Bahasa tujuan tidak didukung.");
   return {
     translator: { translator: "m2m100", target_lang: LANGUAGES[target] },
-    detector: { detector: "default", detection_size: 1536 },
-    ocr: { ocr: "48px" },
-    inpainter: { inpainter: "lama_large", inpainting_size: 1024, inpainting_precision: "fp32" },
-    render: { renderer: "default", direction: "horizontal" },
+    // Match upstream manga-image-translator defaults for high-resolution manga.
+    // Auto direction lets the renderer preserve both horizontal webtoon text and
+    // vertical Japanese dialogue instead of forcing every region horizontally.
+    detector: { detector: "default", detection_size: 2048 },
+    ocr: { ocr: "48px", ignore_bubble: 5 },
+    inpainter: { inpainter: "lama_large", inpainting_size: 2048, inpainting_precision: "bf16" },
+    render: { renderer: "default", alignment: "auto", direction: "auto", rtl: true },
     colorizer: { colorizer: "none" },
-    upscale: { upscaler: "none" }
+    upscale: { upscaler: "none" },
+    kernel_size: 3,
+    mask_dilation_offset: 30
   };
 }
 

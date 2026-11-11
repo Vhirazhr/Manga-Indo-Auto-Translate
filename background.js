@@ -391,6 +391,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === "GET_IMAGE_DATA") {
+    getImagePayload(message)
+      .then(payload => sendResponse({
+        ok: true,
+        dataUrl: "data:" + payload.mimeType + ";base64," + payload.data
+      }))
+      .catch(error => sendResponse({ ok: false, error: error?.message || "Gagal mengambil gambar." }));
+    return true;
+  }
+
   if (message?.type === "DOWNLOAD_IMAGE") {
     chrome.downloads.download({
       url: message.dataUrl,

@@ -31,6 +31,7 @@ async function savePreferences() {
     sourceLanguage: sourceLanguage.value,
     cleanupMode: aiCleanup.checked ? "ai" : "simple"
   });
+  try { await sendToPage({ type: "PREFERENCES_CHANGED" }); } catch (_) {}
 }
 
 async function loadPopup() {
@@ -133,7 +134,6 @@ siteAuto.addEventListener("change", async () => {
     const sites = saved.autoSites || {};
     sites[activeHost] = siteAuto.checked;
     await chrome.storage.local.set({ autoSites: sites });
-    await sendToPage({ type: "SET_SITE_AUTO", enabled: siteAuto.checked });
     setStatus(siteAuto.checked ? "Auto-translate aktif untuk situs ini." : "Auto-translate dimatikan.", "success");
   } catch (error) {
     setStatus("Pengaturan tersimpan. Refresh halaman manga jika content script belum aktif. " + (error?.message || ""), "error");

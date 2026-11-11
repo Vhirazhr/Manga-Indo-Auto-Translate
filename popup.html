@@ -5,100 +5,108 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Manga Indo Auto Translate</title>
   <style>
-    :root {
-      color-scheme: light;
-      font-family: Arial, sans-serif;
-      background: #f7f8fa;
-    }
-    body {
-      width: 350px;
-      margin: 0;
-      padding: 16px;
-      color: #202124;
-      background: #fff;
-      box-sizing: border-box;
-    }
-    h1 { font-size: 17px; margin: 0 0 5px; }
-    .sub {
-      font-size: 12px; color: #5f6368; margin: 0 0 15px;
-      line-height: 1.5;
-    }
-    label {
-      display: block; font-size: 12px; font-weight: 700;
-      margin: 12px 0 6px;
-    }
-    input[type=password] {
-      box-sizing: border-box; width: 100%; padding: 10px;
-      border: 1px solid #dadce0; border-radius: 8px;
-      font-size: 13px;
-    }
-    .row {
-      display: flex; align-items: flex-start; gap: 8px;
-      margin: 14px 0; font-size: 13px;
-    }
-    .row input { margin: 2px 0 0; }
-    .row label {
-      display: inline; margin: 0; font-weight: 400;
-      line-height: 1.4;
-    }
-    button {
-      width: 100%; padding: 10px 12px; border: 0;
-      border-radius: 8px; cursor: pointer; font-weight: 700;
-      font-size: 12px; margin-top: 8px;
-    }
-    button:focus-visible, input:focus-visible {
-      outline: 2px solid #1a73e8; outline-offset: 2px;
-    }
-    #saveKey { background: #eef1f5; color: #202124; }
-    #clearKey { background: #f8f9fa; color: #5f6368; }
-    #start { background: #1a73e8; color: #fff; }
-    #stop { background: #fce8e6; color: #b3261e; }
-    #status {
-      min-height: 34px; margin-top: 12px; padding: 9px;
-      border-radius: 7px; background: #f1f3f4;
-      font-size: 12px; line-height: 1.45; overflow-wrap: anywhere;
-    }
-    #status.error { color: #b3261e; background: #fce8e6; }
-    #status.success { color: #137333; background: #e6f4ea; }
-    .help {
-      font-size: 11px; color: #5f6368; line-height: 1.5;
-      margin: 12px 0 0;
-    }
-    a { color: #1a73e8; }
-    .note { color: #8a4b08; }
-    .version {
-      margin-top: 12px; color: #80868b; font-size: 10px;
-      text-align: right;
-    }
+    *{box-sizing:border-box}
+    body{width:370px;margin:0;padding:16px;background:#10151e;color:#e8edf5;font:13px/1.45 Arial,sans-serif}
+    h1{font-size:17px;margin:0 0 4px}
+    .sub{margin:0 0 14px;color:#9eabba;font-size:11px}
+    .section{padding:12px;margin:10px 0;border:1px solid #2b3544;border-radius:11px;background:#171f2b}
+    .section-title{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#a9b7c9;margin-bottom:8px}
+    label{display:block;margin:8px 0 5px;font-size:11px;font-weight:700;color:#cbd5e1}
+    input[type=password],select{width:100%;padding:9px;border:1px solid #39475b;border-radius:7px;background:#0e141d;color:#fff;font:12px Arial}
+    button{width:100%;padding:9px 10px;border:0;border-radius:7px;margin-top:7px;background:#2a3545;color:#fff;font-weight:700;font-size:12px;cursor:pointer}
+    button.primary{background:#2563eb}
+    button.green{background:#147d50}
+    button.warn{background:#704d1b}
+    .row{display:flex;align-items:center;gap:8px;margin:8px 0}
+    .row label{margin:0;font-weight:500;line-height:1.35}
+    input[type=checkbox]{accent-color:#2f80ed}
+    .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .two button{margin:0}
+    #status{min-height:35px;padding:9px;margin-top:10px;border-radius:7px;background:#202a38;color:#d7e0ec;font-size:11px;overflow-wrap:anywhere}
+    #status.error{background:#482329;color:#ffd9de}
+    #status.success{background:#173d2d;color:#c8f7da}
+    .hint{color:#8f9caf;font-size:10px;line-height:1.45;margin-top:8px}
+    a{color:#83b8ff}
+    .site{font-size:11px;color:#aab8c9;overflow-wrap:anywhere}
+    .version{text-align:right;color:#758296;font-size:10px;margin-top:8px}
   </style>
 </head>
 <body>
   <h1>📖 Manga Indo Auto Translate</h1>
-  <p class="sub">Deteksi dialog manga dari berbagai bahasa dan tampilkan terjemahan bahasa Indonesia di atas bubble.</p>
+  <p class="sub">Terjemahkan manga langsung di halaman yang sedang kamu baca.</p>
 
-  <label for="apiKey">Gemini API key</label>
-  <input id="apiKey" type="password" placeholder="Tempel API key untuk menyimpan atau mengganti" autocomplete="off">
-  <button id="saveKey">Simpan / Ganti API key</button>
-  <button id="clearKey">Hapus API key tersimpan</button>
-
-  <div class="row">
-    <input id="autoToggle" type="checkbox">
-    <label for="autoToggle">Terjemahkan otomatis setelah aku scroll, termasuk area reader di dalam halaman</label>
+  <div class="section">
+    <div class="section-title">Akun & API</div>
+    <label for="apiKey">Gemini API key</label>
+    <input id="apiKey" type="password" placeholder="Tempel API key untuk menyimpan / mengganti" autocomplete="off">
+    <div class="two">
+      <button id="saveKey" class="primary">Simpan API key</button>
+      <button id="clearKey">Hapus key</button>
+    </div>
+    <div class="hint">Key disimpan lokal di Chrome. Jangan bagikan key atau unggah ke repository.</div>
+    <div class="hint"><a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Buat Gemini API key di AI Studio</a></div>
   </div>
 
-  <button id="start">Mulai / Terjemahkan layar sekarang</button>
-  <button id="stop">Matikan dan sembunyikan terjemahan</button>
+  <div class="section">
+    <div class="section-title">Bahasa & restorasi</div>
+    <label for="targetLanguage">Terjemahkan ke</label>
+    <select id="targetLanguage">
+      <option value="id">Bahasa Indonesia</option>
+      <option value="en">English</option>
+      <option value="ja">日本語</option>
+      <option value="ko">한국어</option>
+      <option value="zh">中文</option>
+      <option value="es">Español</option>
+      <option value="fr">Français</option>
+      <option value="pt">Português</option>
+      <option value="de">Deutsch</option>
+      <option value="ru">Русский</option>
+      <option value="vi">Tiếng Việt</option>
+      <option value="th">ไทย</option>
+      <option value="tr">Türkçe</option>
+      <option value="ar">العربية</option>
+    </select>
+    <label for="sourceLanguage">Bahasa asli</label>
+    <select id="sourceLanguage">
+      <option value="auto">Deteksi otomatis</option>
+      <option value="en">English</option>
+      <option value="ja">Japanese</option>
+      <option value="ko">Korean</option>
+      <option value="zh">Chinese</option>
+      <option value="id">Indonesian</option>
+      <option value="es">Spanish</option>
+      <option value="fr">French</option>
+      <option value="pt">Portuguese</option>
+    </select>
+    <div class="row">
+      <input id="aiCleanup" type="checkbox">
+      <label for="aiCleanup">AI background restoration (lebih mirip hasil lettering, memakai request Gemini tambahan)</label>
+    </div>
+  </div>
 
-  <div id="status" role="status" aria-live="polite">Masukkan API key Gemini, simpan, lalu buka halaman manga dan tekan Mulai.</div>
+  <div class="section">
+    <div class="section-title">Izin situs & Auto</div>
+    <div class="site" id="siteName">Membaca situs aktif...</div>
+    <button id="grantAccess" class="primary">Izinkan situs & CDN gambar</button>
+    <div class="row">
+      <input id="siteAuto" type="checkbox">
+      <label for="siteAuto">Auto-translate halaman di situs ini saat aku scroll</label>
+    </div>
+    <div class="hint">Izin hanya diminta untuk domain situs dan host gambar yang ditemukan pada halaman aktif. Gambar dikirim ke Gemini hanya saat kamu menerjemahkan.</div>
+  </div>
 
-  <p class="help">
-    Belum punya API key? <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Buat API key di Google AI Studio</a>.
-    <br><br>
-    <span class="note">Privasi:</span> API key tersimpan di penyimpanan lokal Chrome. Extension mengirim screenshot layar aktif ke Gemini saat kamu meminta terjemahan. Jangan bagikan API key.
-    <br><br>
-    <span class="note">Catatan:</span> Penggunaan Gemini API memiliki kuota dan ketentuan biaya tersendiri. Google AI Pro tidak otomatis mencakup kuota Gemini API.
-  </p>
-  <div class="version">Versi 1.1.0</div>
+  <div class="section">
+    <div class="section-title">Aksi cepat</div>
+    <button id="translateVisible" class="green">Terjemahkan halaman yang terlihat</button>
+    <div class="two" style="margin-top:7px">
+      <button id="selectArea">Pilih area (Alt+Shift+S)</button>
+      <button id="toggleOriginal">Asli / Terjemahan (Alt+Shift+O)</button>
+    </div>
+    <div class="hint">Di halaman manga, arahkan kursor ke gambar untuk membuka tombol R, Auto, Original, dan Edit.</div>
+  </div>
+
+  <div id="status" role="status" aria-live="polite">Masukkan API key dan izinkan akses ke situs manga sebelum mulai.</div>
+  <div class="version">Versi 2.0.0 · Manga Indo</div>
 
   <script src="popup.js"></script>
 </body>

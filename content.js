@@ -235,21 +235,20 @@
     toolbar.style.top = top + "px";
   }
 
-  function siteSettings() {
-    return chrome.storage.local.get([AUTO_KEY]).then(data => data[AUTO_KEY] || {});
-  }
-
   async function loadSiteAuto() {
-    const settings = await siteSettings();
-    autoEnabled = Boolean(settings[siteHost]);
+    const result = await chrome.runtime.sendMessage({ type: "GET_SITE_AUTO", hostname: siteHost });
+    autoEnabled = Boolean(result?.enabled);
     updateToolbarState();
     if (autoEnabled) enqueueNearViewport();
   }
 
   async function setSiteAuto(enabled) {
-    const settings = await siteSettings();
-    settings[siteHost] = Boolean(enabled);
-    await chrome.storage.local.set({ [AUTO_KEY]: settings });
+    const result = await chrome.runtime.sendMessage({
+      type: "SET_SITE_AUTO",
+      hostname: siteHost,
+      enabled: Boolean(enabled)
+    });
+    if (!result?.ok) throw new Error(result?.error || "Gagal menyimpan Auto-translate.");
     autoEnabled = Boolean(enabled);
     updateToolbarState();
 
@@ -692,6 +691,16 @@
 
     if (message.type === "SET_SITE_AUTO") {
       setSiteAuto(Boolean(message.enabled));
+    } else if (message.type === "SITE_AUTO_CHANGED") {
+      const enabled = Boolean(message.sites?.[siteHost]);
+      if (enabled !== autoEnabled) {
+        autoEnabled = enabled;
+        updateToolbarState();
+        if (autoEnabled) enqueueNearViewport();
+        else queue.length = 0;
+      }
+    } else if (message.type === "PREFERENCES_CHANGED") {
+      resetTranslationsForNewPreferences();
     } else if (message.type === "TRANSLATE_VISIBLE") {
       scanImages();
       const visible = Array.from(document.querySelectorAll("img"))
@@ -727,31 +736,20 @@
     }
   });
 
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== "local") return;
-
-    if (changes[AUTO_KEY]) {
-      const next = changes[AUTO_KEY].newValue || {};
-      const enabled = Boolean(next[siteHost]);
-      if (enabled !== autoEnabled) {
-        autoEnabled = enabled;
-        updateToolbarState();
-        if (autoEnabled) enqueueNearViewport();
-        else queue.length = 0;
-      }
+  function resetTranslationsForNewPreferences() {
+    for (const state of stateList) {
+      if (state.showingTranslated) showOriginal(state);
+      state.translatedDataUrl = "";
+      state.status = "idle";
     }
+    queue.length = 0;
+    if (autoEnabled) enqueueNearViewport();
+    showToast("Pengaturan bahasa/restorasi berubah. Halaman akan diterjemahkan ulang saat dibutuhkan.", "info");
+  }
 
-    if (changes.targetLanguage || changes.sourceLanguage || changes.cleanupMode) {
-      for (const state of stateList) {
-        if (state.showingTranslated) showOriginal(state);
-        state.translatedDataUrl = "";
-        state.status = "idle";
-      }
-      queue.length = 0;
-      if (autoEnabled) enqueueNearViewport();
-      showToast("Pengaturan bahasa/restorasi berubah. Halaman akan diterjemahkan ulang saat dibutuhkan.", "info");
-    }
-  });
+  // The API key and extension settings stay in trusted extension contexts.
+  // Content scripts receive only the site toggle and preference-change signals.
+
 
   loadSiteAuto();
   scanImages();

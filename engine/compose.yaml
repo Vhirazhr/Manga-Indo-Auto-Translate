@@ -1,17 +1,37 @@
 services:
   translator:
-    # Official upstream runtime; no OCR, translator, or inpainter is reimplemented here.
+    # Official upstream runtime; OCR, translation, and inpainting stay upstream.
     image: zyddnys/manga-image-translator:main@sha256:62b690cfbfd619afa4ea446d62cf8ea1088a76c5ece64dd834d67a881fc05ff7
     platform: linux/amd64
-    entrypoint: ["python", "server/main.py"]
-    command: ["--host", "0.0.0.0", "--port", "8000", "--start-instance"]
+    init: true
+    entrypoint: ["/bin/sh", "-c"]
+    # Run the 24-hour janitor beside the upstream server. It only cleans the
+    # dedicated temp/result volumes; model and Hugging Face cache volumes persist.
+    command: >
+      /bin/sh /usr/local/bin/mita-cleanup-temp.sh &
+      exec python server/main.py --host 0.0.0.0 --port 8000 --start-instance
     ports:
       - "127.0.0.1:8000:8000"
+    environment:
+      TMPDIR: /tmp/manga-indo-temp
+      TEMP: /tmp/manga-indo-temp
+      TMP: /tmp/manga-indo-temp
     volumes:
       - manga-models:/app/models
       - manga-cache:/root/.cache
+      - manga-temp:/tmp/manga-indo-temp
+      - manga-results:/app/result
+      - ./engine/cleanup-temp.sh:/usr/local/bin/mita-cleanup-temp.sh:ro
     shm_size: "2gb"
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   manga-models:
   manga-cache:
+  manga-temp:
+  manga-results:

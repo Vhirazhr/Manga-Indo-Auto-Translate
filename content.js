@@ -164,15 +164,18 @@
     const original = document.createElement("button");
     original.textContent = "Original";
     original.title = "Tekan dan tahan untuk melihat gambar asli";
+    let originalPress = false;
     original.addEventListener("click", () => {
-      if (activeState) toggleOriginal(activeState);
+      if (!originalPress && activeState) toggleOriginal(activeState);
     });
     original.addEventListener("pointerdown", () => {
+      originalPress = true;
       if (activeState && activeState.translatedDataUrl) showOriginal(activeState);
     });
     ["pointerup", "pointercancel", "pointerleave"].forEach(name => {
       original.addEventListener(name, () => {
         if (activeState && activeState.translatedDataUrl) showTranslated(activeState);
+        setTimeout(() => { originalPress = false; }, 0);
       });
     });
 
@@ -660,7 +663,11 @@
         showToast("Tidak menemukan gambar manga yang terlihat. Scroll ke halaman manga dahulu.", "warning");
         return;
       }
-      visible.forEach(state => translateImage(state, "manual"));
+      (async () => {
+        for (const state of visible) {
+          if (state.status !== "done") await translateImage(state, "manual");
+        }
+      })();
     } else if (message.type === "START_AREA_SELECTION") {
       startAreaSelection();
     } else if (message.type === "TOGGLE_ORIGINALS") {

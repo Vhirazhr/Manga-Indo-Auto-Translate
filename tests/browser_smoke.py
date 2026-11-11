@@ -66,6 +66,9 @@ with sync_playwright() as p:
         x=(model[0]+model[4])/2;y=(model[1]+model[5])/2
         page.mouse.click(x,y);page.wait_for_timeout(200);assert page.locator('#page').get_attribute('src')==original_url
         page.mouse.click(x,y);page.wait_for_timeout(200);assert page.locator('#page').get_attribute('src')==translated
+        page.mouse.move(400,60);page.wait_for_timeout(200)
+        model=cdp.send('DOM.getBoxModel',{'nodeId':original_button['nodeId']})['model']['content']
+        x=(model[0]+model[4])/2;y=(model[1]+model[5])/2
         page.mouse.move(x,y);page.mouse.down();page.wait_for_timeout(400);assert page.locator('#page').get_attribute('src')==original_url
         page.mouse.up();page.wait_for_timeout(200);assert page.locator('#page').get_attribute('src')==translated
         print('PASS toolbar short click and press-and-hold')

@@ -56,6 +56,7 @@
       ".mita-toolbar{position:fixed;display:flex;gap:5px;align-items:center;padding:6px;background:rgba(18,23,32,.96);border:1px solid #465164;border-radius:11px;box-shadow:0 4px 18px rgba(0,0,0,.35);pointer-events:auto;font:12px Arial,sans-serif;z-index:3;white-space:nowrap}",
       ".mita-toolbar button{border:0;border-radius:7px;padding:7px 9px;background:#303b4d;color:#fff;font:600 12px Arial,sans-serif;cursor:pointer}",
       ".mita-toolbar button:hover{background:#465875}",
+      ".mita-toolbar button:nth-child(3){min-width:70px}",
       ".mita-toolbar .mita-main{background:#2563eb;color:#fff;font-weight:800;min-width:31px}",
       ".mita-toolbar .mita-on{background:#147d50}",
       ".mita-toast{position:fixed;right:14px;top:14px;max-width:min(390px,calc(100vw - 28px));padding:10px 13px;border-radius:9px;background:rgba(23,29,39,.96);color:#fff;font:12px/1.45 Arial,sans-serif;box-shadow:0 3px 16px rgba(0,0,0,.3);pointer-events:none;z-index:8;display:none;overflow-wrap:anywhere}",
@@ -147,7 +148,7 @@
     toolbar.addEventListener("pointerenter", () => {});
     toolbar.addEventListener("pointerleave", () => {
       setTimeout(() => {
-        if (activeState && !activeState.img.matches(":hover")) hideToolbar();
+        if (activeState && !activeState.img.matches(":hover") && !toolbar.matches(":hover")) hideToolbar();
       }, 160);
     });
 

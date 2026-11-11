@@ -18,4 +18,5 @@ for ($attempt = 0; $attempt -lt 60; $attempt++) {
 }
 if (-not $ready) { throw "Server belum siap. Cek: docker compose -f engine/compose.yaml logs --tail 80" }
 Write-Host "Server terhubung. Buka popup ekstensi, klik Cek mesin lokal, lalu terjemahkan satu gambar."
+Write-Host "Pembersihan otomatis aktif: temporary/result >24 jam (pemeriksaan tiap 15 menit). Model AI dan cache dipertahankan."
 Write-Host "Pemakaian pertama mengunduh model. Lihat progres: docker compose -f engine/compose.yaml logs -f"

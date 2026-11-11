@@ -3,9 +3,10 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, utimesSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
-const repoRoot = path.resolve(new URL("..", import.meta.url).pathname);
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cleanupScript = path.join(repoRoot, "engine", "cleanup-temp.sh");
 
 test("24-hour cleanup removes only expired temp/results and preserves recent files and model data", () => {

@@ -100,7 +100,8 @@
       showingTranslated: false,
       busy: false,
       status: "idle",
-      observerSeen: false
+      observerSeen: false,
+      restoringOriginal: false
     };
 
     imageStates.set(img, state);
@@ -376,6 +377,7 @@
   function showOriginal(state) {
     if (!state) return;
     const img = state.img;
+    state.restoringOriginal = true;
     if (state.originalSrcAttr === null) img.removeAttribute("src");
     else img.setAttribute("src", state.originalSrcAttr);
     if (state.originalSrcset === null) img.removeAttribute("srcset");
@@ -384,6 +386,7 @@
     else img.setAttribute("sizes", state.originalSizes);
     if (!state.originalSrcAttr && state.originalSrc) img.src = state.originalSrc;
     state.showingTranslated = false;
+    setTimeout(() => { state.restoringOriginal = false; }, 0);
     if (activeState === state) updateToolbarState();
   }
 
@@ -668,7 +671,7 @@
       if (mutation.type === "childList") needsScan = true;
       if (mutation.type === "attributes" && mutation.target instanceof HTMLImageElement) {
         const state = imageStates.get(mutation.target);
-        if (state && !state.showingTranslated && mutation.attributeName === "src") {
+        if (state && !state.showingTranslated && !state.restoringOriginal && mutation.attributeName === "src") {
           updateOriginalSource(state);
         }
         needsScan = true;

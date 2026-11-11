@@ -118,6 +118,15 @@ with sync_playwright() as p:
         print('PASS image editor exposes undo, redo, and transparent eraser controls')
         page.keyboard.press('Escape');page.wait_for_timeout(100)
         print('PASS popup has no API-key controls')
+
+        wide=Image.new('RGB',(1000,180),'white');ImageDraw.Draw(wide).text((30,50),'WEBTOON PANEL',fill='black')
+        wide_buffer=io.BytesIO();wide.save(wide_buffer,format='PNG')
+        wide_url='data:image/png;base64,'+base64.b64encode(wide_buffer.getvalue()).decode()
+        page.evaluate('(src) => { document.body.innerHTML = ""; const img=document.createElement("img");img.id="wide";img.src=src;img.width=1000;img.height=180;document.body.append(img); }',wide_url)
+        page.locator('#wide').hover(position={"x":500,"y":90});page.wait_for_timeout(220)
+        button_center('R')
+        print('PASS wide webtoon panels are detected for manual translation')
+
         page.evaluate('(src) => { document.body.innerHTML = ""; for (let i=0;i<3;i++) { const img = document.createElement("img"); img.src=src; img.width=320; img.height=240; document.body.append(img); } }', original_url)
         page.wait_for_timeout(500)
         sw.evaluate('() => chrome.storage.local.set({autoSites:{"127.0.0.1":true}})')

@@ -20,6 +20,14 @@ function notifyTab(tabId, message) {
   chrome.tabs.sendMessage(tabId, message).catch(() => {});
 }
 
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || !changes.autoSites) return;
+  const sites = changes.autoSites.newValue || {};
+  chrome.tabs.query({}).then(tabs => {
+    tabs.forEach(tab => notifyTab(tab.id, { type: "SITE_AUTO_CHANGED", sites }));
+  }).catch(() => {});
+});
+
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   const actions = {
     "mita-translate-image": "TRANSLATE_CONTEXT_IMAGE",
@@ -416,6 +424,23 @@ async function processImage(message) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === "GET_SITE_AUTO") {
+    chrome.storage.local.get(["autoSites"])
+      .then(data => sendResponse({ ok: true, enabled: Boolean(data.autoSites?.[message.hostname]) }))
+      .catch(error => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+
+  if (message?.type === "SET_SITE_AUTO") {
+    chrome.storage.local.get(["autoSites"]).then(async data => {
+      const sites = data.autoSites || {};
+      sites[message.hostname] = Boolean(message.enabled);
+      await chrome.storage.local.set({ autoSites: sites });
+      sendResponse({ ok: true, enabled: Boolean(message.enabled) });
+    }).catch(error => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+
   if (message?.type === "PROCESS_MANGA_IMAGE") {
     processImage(message)
       .then(result => sendResponse(result))

@@ -1,7 +1,4 @@
-const apiKeyInput = document.getElementById("apiKey");
 const targetLanguage = document.getElementById("targetLanguage");
-const sourceLanguage = document.getElementById("sourceLanguage");
-const aiCleanup = document.getElementById("aiCleanup");
 const siteAuto = document.getElementById("siteAuto");
 const statusBox = document.getElementById("status");
 const siteName = document.getElementById("siteName");
@@ -28,9 +25,7 @@ async function sendToPage(message) {
 
 async function savePreferences() {
   await chrome.storage.local.set({
-    targetLanguage: targetLanguage.value,
-    sourceLanguage: sourceLanguage.value,
-    cleanupMode: aiCleanup.checked ? "ai" : "simple"
+    targetLanguage: targetLanguage.value
   });
   try { await sendToPage({ type: "PREFERENCES_CHANGED" }); } catch (_) {}
 }
@@ -65,43 +60,30 @@ async function loadPopup() {
   }
 
   const saved = await chrome.storage.local.get([
-    "apiKey", "targetLanguage", "sourceLanguage", "cleanupMode", "autoSites"
+    "targetLanguage", "autoSites"
   ]);
 
   targetLanguage.value = saved.targetLanguage || "id";
-  sourceLanguage.value = saved.sourceLanguage || "auto";
-  aiCleanup.checked = (saved.cleanupMode || "ai") === "ai";
   siteAuto.checked = Boolean(saved.autoSites?.[activeHost]);
 
-  if (saved.apiKey) {
-    setStatus("API key sudah tersimpan. Isi kolom hanya jika ingin mengganti.", "success");
-  } else {
-    setStatus("Masukkan API key Gemini terlebih dahulu.");
-  }
+  siteAuto.disabled = !activeHost;
+  setStatus("Siap. Pastikan mesin lokal berjalan sebelum menerjemahkan.");
 }
 
-document.addEventListener("DOMContentLoaded", loadPopup);
+document.addEventListener("DOMContentLoaded", () => loadPopup().catch(error => setStatus(error.message, "error")));
 
-document.getElementById("saveKey").addEventListener("click", async () => {
-  const key = apiKeyInput.value.trim();
-  if (!key) {
-    setStatus("Kolom API key masih kosong.", "error");
-    return;
-  }
-  await chrome.storage.local.set({ apiKey: key });
-  apiKeyInput.value = "";
-  setStatus("API key berhasil disimpan di penyimpanan lokal Chrome.", "success");
+document.getElementById("checkEngine").addEventListener("click", async () => {
+  setStatus("Memeriksa mesin lokal...");
+  try {
+    const result = await chrome.runtime.sendMessage({ type: "CHECK_ENGINE" });
+    if (!result?.ok) throw new Error(result?.error || "Mesin tidak merespons.");
+    setStatus("Server lokal terhubung. Kesiapan model akan diperiksa saat terjemahan pertama.", "success");
+  } catch (error) { setStatus(error.message, "error"); }
 });
 
-document.getElementById("clearKey").addEventListener("click", async () => {
-  await chrome.storage.local.remove("apiKey");
-  apiKeyInput.value = "";
-  setStatus("API key dihapus dari extension.", "success");
-});
-
-[targetLanguage, sourceLanguage, aiCleanup].forEach(control => {
+[targetLanguage].forEach(control => {
   control.addEventListener("change", () => {
-    savePreferences().then(() => setStatus("Pengaturan tersimpan.", "success"));
+    savePreferences().then(() => setStatus("Pengaturan tersimpan.", "success")).catch(error => setStatus(error.message, "error"));
   });
 });
 
@@ -141,12 +123,6 @@ siteAuto.addEventListener("change", async () => {
 
 document.getElementById("translateVisible").addEventListener("click", async () => {
   try {
-    await savePreferences();
-    const saved = await chrome.storage.local.get(["apiKey"]);
-    if (!saved.apiKey) {
-      setStatus("Simpan Gemini API key terlebih dahulu.", "error");
-      return;
-    }
     await sendToPage({ type: "TRANSLATE_VISIBLE" });
     setStatus("Permintaan dikirim. Lihat status di halaman manga.", "success");
   } catch (error) {

@@ -26,7 +26,7 @@
     showToast(text, kind || "info");
   }
 
-  function showToast(text, kind) {
+  function showToast(text, kind, duration = 4200) {
     ensureUI();
     if (!toastNode) {
       toastNode = document.createElement("div");
@@ -39,7 +39,7 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => {
       if (toastNode) toastNode.style.display = "none";
-    }, 4200);
+    }, duration);
   }
 
   function ensureUI() {
@@ -101,7 +101,8 @@
       busy: false,
       status: "idle",
       observerSeen: false,
-      restoringOriginal: false
+      restoringOriginal: false,
+      revision: 0
     };
 
     imageStates.set(img, state);
@@ -128,6 +129,7 @@
   function updateOriginalSource(state) {
     const img = state.img;
     if (state.showingTranslated) return;
+    state.revision += 1;
     state.originalSrc = img.currentSrc || img.src;
     state.originalSrcAttr = img.getAttribute("src");
     state.originalSrcset = img.getAttribute("srcset");
@@ -165,19 +167,31 @@
     const original = document.createElement("button");
     original.textContent = "Original";
     original.title = "Tekan dan tahan untuk melihat gambar asli";
-    let originalPress = false;
+    let heldState = null;
+    let holdTimer = null;
+    let didHold = false;
+    let wasTranslated = false;
+    original.addEventListener("pointerdown", event => {
+      if (!activeState?.translatedDataUrl) return;
+      heldState = activeState;
+      wasTranslated = heldState.showingTranslated;
+      didHold = false;
+      original.setPointerCapture(event.pointerId);
+      holdTimer = setTimeout(() => { didHold = true; showOriginal(heldState); }, 250);
+    });
+    original.addEventListener("pointerup", () => {
+      clearTimeout(holdTimer);
+      if (didHold && heldState && wasTranslated) showTranslated(heldState);
+      heldState = null;
+    });
+    original.addEventListener("pointercancel", () => {
+      clearTimeout(holdTimer);
+      if (didHold && heldState && wasTranslated) showTranslated(heldState);
+      heldState = null;
+    });
     original.addEventListener("click", () => {
-      if (!originalPress && activeState) toggleOriginal(activeState);
-    });
-    original.addEventListener("pointerdown", () => {
-      originalPress = true;
-      if (activeState && activeState.translatedDataUrl) showOriginal(activeState);
-    });
-    ["pointerup", "pointercancel", "pointerleave"].forEach(name => {
-      original.addEventListener(name, () => {
-        if (activeState && activeState.translatedDataUrl) showTranslated(activeState);
-        setTimeout(() => { originalPress = false; }, 0);
-      });
+      if (!didHold && activeState) toggleOriginal(activeState);
+      didHold = false;
     });
 
     const edit = document.createElement("button");
@@ -257,7 +271,7 @@
       enqueueNearViewport();
       showToast("Auto-translate aktif untuk " + siteHost + ".", "success");
     } else {
-      queue.length = 0;
+      clearQueue();
       showToast("Auto-translate dimatikan untuk " + siteHost + ".");
     }
   }
@@ -270,6 +284,11 @@
     const rect = state.img.getBoundingClientRect();
     const center = window.innerHeight / 2;
     return Math.abs((rect.top + rect.bottom) / 2 - center);
+  }
+
+  function clearQueue() {
+    for (const state of queue) if (state.status === "queued") state.status = "idle";
+    queue.length = 0;
   }
 
   function enqueue(state) {
@@ -288,6 +307,7 @@
       queue.sort((a, b) => imageDistance(a) - imageDistance(b));
       const state = queue.shift();
       if (!state || state.status !== "queued") continue;
+      if (!state.img.isConnected) { state.status = "idle"; continue; }
       await translateImage(state, "auto");
     }
 
@@ -326,21 +346,50 @@
     return { imageUrl: url };
   }
 
+  async function requestTranslation(message) {
+    const started = await chrome.runtime.sendMessage({ type: "PROCESS_MANGA_IMAGE", ...message });
+    if (!started?.ok || !started.jobId) throw new Error(started?.error || "Tidak bisa memulai terjemahan.");
+    const deadline = Date.now() + 160 * 60 * 1000; // Up to eight serialized jobs, twenty minutes each.
+    let progress = "";
+    try {
+      while (Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const result = await chrome.runtime.sendMessage({ type: "GET_JOB", jobId: started.jobId });
+        if (!result?.ok) throw new Error(result?.error || "Pekerjaan mesin tidak ditemukan.");
+        if (result.done) {
+          if (!result.result?.ok) throw new Error(result.result?.error || "Terjemahan gagal.");
+          return result.result;
+        }
+        if (result.progress && result.progress !== progress) {
+          progress = result.progress;
+          showToast(progress, "info", 10000);
+        }
+      }
+      throw new Error("Antrean mesin melewati batas waktu.");
+    } catch (error) {
+      error.processing = true;
+      throw error;
+    } finally {
+      chrome.runtime.sendMessage({ type: "RELEASE_JOB", jobId: started.jobId }).catch(() => {});
+    }
+  }
+
   async function translateImage(state, source) {
     if (!state || state.busy || state.status === "done") return;
+    const revision = state.revision;
     state.busy = true;
     state.status = "processing";
     if (activeState === state) updateToolbarState();
 
-    showToast(source === "auto" ? "Menerjemahkan halaman manga yang dekat dengan posisi bacamu..." : "Mengirim gambar ke Gemini untuk diterjemahkan...", "info", 6000);
+    showToast(source === "auto" ? "Menerjemahkan halaman manga yang dekat dengan posisi bacamu..." : "Memproses gambar dengan mesin lokal...", "info", 6000);
 
     try {
       const imageSource = await imageRequestSource(state);
-      const response = await chrome.runtime.sendMessage({
-        type: "PROCESS_MANGA_IMAGE",
+      const response = await requestTranslation({
         ...imageSource
       });
 
+      if (state.revision !== revision || !state.img.isConnected) return;
       if (!response?.ok) throw new Error(response?.error || "Proses terjemahan gagal.");
       if (response.noText || !response.dataUrl) {
         state.status = "empty";
@@ -353,12 +402,13 @@
       showTranslated(state);
 
       const warning = response.cleanupWarning ? " " + response.cleanupWarning : "";
-      showToast("Halaman selesai diterjemahkan (" + response.regions.length + " area)." + warning, response.cleanupWarning ? "warning" : "success", 5200);
+      showToast("Halaman selesai diproses oleh mesin lokal." + warning, response.cleanupWarning ? "warning" : "success", 5200);
     } catch (error) {
-      state.status = "error";
+      if (state.revision === revision) state.status = "error";
       showToast(error?.message || "Terjadi kesalahan saat menerjemahkan.", "error", 6500);
     } finally {
       state.busy = false;
+      if (state.revision !== revision && autoEnabled) enqueueNearViewport();
       if (activeState === state) updateToolbarState();
     }
   }
@@ -551,6 +601,10 @@
     let directError = null;
 
     if (state) {
+      const b = state.img.getBoundingClientRect();
+      if (rect.left < b.left || rect.top < b.top || rect.left + rect.width > b.right || rect.top + rect.height > b.bottom) state = null;
+    }
+    if (state) {
       const bounds = state.img.getBoundingClientRect();
       const area = {
         x: Math.max(0, (rect.left - bounds.left) / bounds.width),
@@ -561,13 +615,13 @@
 
       try {
         const source = await imageRequestSource(state);
-        response = await chrome.runtime.sendMessage({
-          type: "PROCESS_MANGA_IMAGE",
+        response = await requestTranslation({
           ...source,
           area
         });
         if (!response?.ok) throw new Error(response?.error || "Gagal menerjemahkan area gambar.");
       } catch (error) {
+        if (error.processing) { showToast(error.message, "error", 6500); return; }
         directError = error;
       }
     }
@@ -576,14 +630,15 @@
     // This also supports readers that draw pages on a canvas or block image URLs.
     if (!response?.ok) {
       try {
+        uiHost.style.visibility = "hidden";
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const captured = await chrome.runtime.sendMessage({
           type: "CAPTURE_SELECTED_AREA",
           rect,
           dpr: window.devicePixelRatio || 1
-        });
+        }).finally(() => { uiHost.style.visibility = ""; });
         if (!captured?.ok) throw new Error(captured?.error || "Tidak bisa mengambil area layar.");
-        response = await chrome.runtime.sendMessage({
-          type: "PROCESS_MANGA_IMAGE",
+        response = await requestTranslation({
           imageDataUrl: captured.dataUrl
         });
         if (!response?.ok) throw new Error(response?.error || "Gagal menerjemahkan screenshot area.");
@@ -697,7 +752,7 @@
         autoEnabled = enabled;
         updateToolbarState();
         if (autoEnabled) enqueueNearViewport();
-        else queue.length = 0;
+        else clearQueue();
       }
     } else if (message.type === "PREFERENCES_CHANGED") {
       resetTranslationsForNewPreferences();
@@ -739,6 +794,7 @@
   function resetTranslationsForNewPreferences() {
     for (const state of stateList) {
       if (state.showingTranslated) showOriginal(state);
+      state.revision += 1;
       state.translatedDataUrl = "";
       state.status = "idle";
     }
@@ -747,7 +803,7 @@
     showToast("Pengaturan bahasa/restorasi berubah. Halaman akan diterjemahkan ulang saat dibutuhkan.", "info");
   }
 
-  // The API key and extension settings stay in trusted extension contexts.
+  // Extension settings stay in trusted extension contexts.
   // Content scripts receive only the site toggle and preference-change signals.
 
 

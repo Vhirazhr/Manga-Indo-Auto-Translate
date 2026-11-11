@@ -1,12 +1,8 @@
-const OCR_MODEL = "gemini-3.8-flash";
-const IMAGE_MODEL = "gemini-3.1-flash-image";
-const API_BASE = "https://generativelanguage.googleapis.com/v1beta/models/";
-const REQUEST_TIMEOUT_MS = 120000;
 const MAX_IMAGE_BYTES = 18 * 1024 * 1024;
-
 chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" }).catch(() => {});
 
 chrome.runtime.onInstalled.addListener(() => {
+  chrome.storage.local.remove(["apiKey", "cleanupMode", "sourceLanguage"]);
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({ id: "mita-translate-image", title: "Terjemahkan gambar dengan Manga Indo", contexts: ["image"] });
     chrome.contextMenus.create({ id: "mita-edit-image", title: "Edit gambar dengan Manga Indo", contexts: ["image"] });
@@ -53,6 +49,7 @@ chrome.commands.onCommand.addListener(async command => {
 function dataUrlParts(dataUrl) {
   const match = String(dataUrl || "").match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/);
   if (!match) throw new Error("Format gambar tidak didukung.");
+  if (match[2].length > MAX_IMAGE_BYTES * 4 / 3 + 4) throw new Error("Gambar terlalu besar (maksimum 18 MB).");
   return { mimeType: match[1], data: match[2] };
 }
 
@@ -89,7 +86,7 @@ async function getImagePayload(message) {
     throw new Error("Izin gambar belum diberikan. Buka popup extension dan klik Izinkan situs & CDN.");
   }
 
-  const response = await fetch(url.href, { method: "GET", credentials: "include", cache: "force-cache" });
+  const response = await fetch(url.href, { method: "GET", credentials: "include", cache: "force-cache", signal: AbortSignal.timeout(25000) });
   if (!response.ok) throw new Error("Gagal mengambil gambar dari situs manga (" + response.status + ").");
   const blob = await response.blob();
   if (!blob.type.startsWith("image/")) throw new Error("URL tidak mengembalikan file gambar.");
@@ -106,6 +103,7 @@ async function imageDimensions(payload) {
 
 async function cropPayload(payload, area) {
   if (!area) return payload;
+  if (![area.x, area.y, area.width, area.height].every(Number.isFinite) || area.width <= 0 || area.height <= 0) throw new Error("Area gambar tidak valid.");
   const bitmap = await createImageBitmap(base64ToBlob(payload.data, payload.mimeType));
   const x = Math.max(0, Math.min(bitmap.width - 1, Math.round(area.x * bitmap.width)));
   const y = Math.max(0, Math.min(bitmap.height - 1, Math.round(area.y * bitmap.height)));
@@ -118,237 +116,6 @@ async function cropPayload(payload, area) {
   const output = await canvas.convertToBlob({ type: "image/png" });
   return { mimeType: "image/png", data: bytesToBase64(new Uint8Array(await output.arrayBuffer())) };
 }
-
-async function geminiRequest(model, parts, generationConfig, apiKey) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    const response = await fetch(API_BASE + model + ":generateContent", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      signal: controller.signal,
-      body: JSON.stringify({ contents: [{ role: "user", parts }], generationConfig })
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const message = result?.error?.message || "Gemini API error.";
-      if (response.status === 401 || response.status === 403) throw new Error("API key Gemini tidak valid atau tidak memiliki akses ke model ini.");
-      if (response.status === 429) throw new Error("Kuota atau batas request Gemini API tercapai. Periksa Google AI Studio.");
-      throw new Error("Gemini API " + response.status + ": " + message);
-    }
-    return result;
-  } catch (error) {
-    if (error.name === "AbortError") throw new Error("Gemini terlalu lama merespons. Coba gambar yang lebih kecil.");
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-function extractText(result) {
-  return (result?.candidates?.[0]?.content?.parts || []).map(part => part.text || "").join("").trim();
-}
-
-function parseJson(text) {
-  const clean = String(text || "").replace(/^\uFEFF/, "").replace(/^\x60{3}(?:json)?\s*/i, "").replace(/\s*\x60{3}$/, "").trim();
-  const start = clean.indexOf("{");
-  const end = clean.lastIndexOf("}");
-  if (start < 0 || end < start) throw new Error("Model tidak mengembalikan data OCR yang valid.");
-  return JSON.parse(clean.slice(start, end + 1));
-}
-
-function languageName(code) {
-  const names = {
-    id: "Indonesian", en: "English", ja: "Japanese", ko: "Korean", zh: "Chinese",
-    es: "Spanish", fr: "French", pt: "Portuguese", de: "German", ru: "Russian",
-    it: "Italian", vi: "Vietnamese", th: "Thai", ar: "Arabic", tr: "Turkish"
-  };
-  return names[code] || code || "Indonesian";
-}
-
-function normalizeRegions(data) {
-  const source = Array.isArray(data?.regions) ? data.regions : [];
-  return source.slice(0, 60).map((item, index) => {
-    const box = Array.isArray(item.box) ? item.box : [];
-    const n = value => Number.isFinite(Number(value)) ? Number(value) : 0;
-    const x = Math.max(0, Math.min(999, n(box[0])));
-    const y = Math.max(0, Math.min(999, n(box[1])));
-    const w = Math.max(0, Math.min(1000 - x, n(box[2])));
-    const h = Math.max(0, Math.min(1000 - y, n(box[3])));
-    return {
-      id: index + 1, x, y, w, h,
-      sourceText: String(item.sourceText || "").trim().slice(0, 600),
-      translation: String(item.translation || "").trim().slice(0, 600),
-      kind: ["bubble", "caption", "narration"].includes(item.kind) ? item.kind : "bubble",
-      style: {
-        color: /^#[0-9a-f]{6}$/i.test(item.style?.color || "") ? item.style.color : "#111111",
-        outline: /^#[0-9a-f]{6}$/i.test(item.style?.outline || "") ? item.style.outline : "#ffffff",
-        weight: item.style?.weight === "normal" ? "normal" : "bold",
-        italic: Boolean(item.style?.italic)
-      }
-    };
-  }).filter(region => region.translation && region.w >= 2 && region.h >= 2);
-}
-
-async function detectAndTranslate(payload, settings, apiKey) {
-  const target = languageName(settings.targetLanguage || "id");
-  const source = settings.sourceLanguage === "auto"
-    ? "Detect the source language automatically."
-    : "The source language is " + languageName(settings.sourceLanguage) + ".";
-
-  const prompt = [
-    "You are a professional manga lettering detector and manga translator.",
-    "Inspect this full manga/comic page. Find readable dialogue inside speech bubbles and readable text in caption/narration boxes.",
-    source,
-    "Translate every detected region into " + target + ". Preserve meaning, character names, honorifics when relevant, tone, emotion and speaker intent.",
-    "Keep each bubble as a separate region. Do not combine different speakers.",
-    "Do not include sound effects, logos, credits, page numbers, signatures or decorative lettering. Leave sound effects untouched.",
-    "Do not guess unreadable text. Skip any region that cannot be read with confidence.",
-    "For every region, return a rectangle around the usable INTERIOR of the whole speech bubble or caption box, leaving a margin from its outline. Do not return only the tight glyph/text bounds and do not include the surrounding panel. The box must be large enough to typeset the translated line(s). Coordinates are normalized 0-1000 relative to the full image: [left, top, width, height].",
-    "Estimate lettering style: color is text ink color, outline is outline color if present, weight is bold or normal, italic true/false.",
-    'Return only JSON: {"detectedLanguage":"en","regions":[{"box":[120,100,220,110],"sourceText":"Hello","translation":"Halo","kind":"bubble","style":{"color":"#111111","outline":"#ffffff","weight":"bold","italic":false}}]}',
-    'If no readable dialogue/caption is found, return {"detectedLanguage":"unknown","regions":[]}.'
-  ].join("\n");
-
-  const result = await geminiRequest(
-    OCR_MODEL,
-    [{ text: prompt }, { inline_data: { mime_type: payload.mimeType, data: payload.data } }],
-    { temperature: 0.1, responseMimeType: "application/json", maxOutputTokens: 8192 },
-    apiKey
-  );
-
-  const parsed = parseJson(extractText(result));
-  return { detectedLanguage: parsed.detectedLanguage || "unknown", regions: normalizeRegions(parsed) };
-}
-
-function buildCleanupPrompt(regions) {
-  const targets = regions.map(region => ({
-    box: [region.x, region.y, region.w, region.h],
-    original: region.sourceText,
-    kind: region.kind
-  }));
-
-  return [
-    "Edit this exact manga page image. This is a precise image-restoration task, not a redraw.",
-    "Inside each listed bubble/caption interior, identify and erase ONLY the original dialogue lettering. Reconstruct the background underneath the letters. Do not erase the entire interior area.",
-    "Preserve the original page composition, dimensions, panel borders, character faces, line art, screentones, shadows, colors, bubble outlines and every non-text pixel as closely as possible.",
-    "Do not add any words, letters, symbols, sound effects or replacement text. Do not translate. The extension will typeset the translation afterward.",
-    "Do not remove sound effects or text outside the listed rectangles.",
-    "Keep every speech-bubble outline intact. Fill erased lettering with surrounding bubble/background texture, not a white rectangle.",
-    "Detected regions (coordinates normalized 0-1000): " + JSON.stringify(targets),
-    "Return one cleaned image with the same page orientation and aspect ratio."
-  ].join("\n");
-}
-
-async function simpleClean(payload, regions) {
-  const bitmap = await createImageBitmap(base64ToBlob(payload.data, payload.mimeType));
-  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(bitmap, 0, 0);
-  bitmap.close();
-
-  for (const region of regions) {
-    const x = Math.round(region.x / 1000 * canvas.width);
-    const y = Math.round(region.y / 1000 * canvas.height);
-    const w = Math.max(1, Math.round(region.w / 1000 * canvas.width));
-    const h = Math.max(1, Math.round(region.h / 1000 * canvas.height));
-    const insetX = Math.max(2, Math.round(w * 0.04));
-    const insetY = Math.max(2, Math.round(h * 0.04));
-    const sx = Math.min(canvas.width - 1, x + insetX);
-    const sy = Math.min(canvas.height - 1, y + insetY);
-    const sample = ctx.getImageData(sx, sy, 1, 1).data;
-    ctx.fillStyle = "rgb(" + sample[0] + "," + sample[1] + "," + sample[2] + ")";
-    ctx.fillRect(x + insetX, y + insetY, Math.max(1, w - insetX * 2), Math.max(1, h - insetY * 2));
-  }
-
-  const blob = await canvas.convertToBlob({ type: "image/png" });
-  return { mimeType: "image/png", data: bytesToBase64(new Uint8Array(await blob.arrayBuffer())) };
-}
-
-async function aiClean(payload, regions, apiKey) {
-  const result = await geminiRequest(
-    IMAGE_MODEL,
-    [{ text: buildCleanupPrompt(regions) }, { inline_data: { mime_type: payload.mimeType, data: payload.data } }],
-    { responseModalities: ["TEXT", "IMAGE"] },
-    apiKey
-  );
-
-  const parts = result?.candidates?.[0]?.content?.parts || [];
-  const imagePart = parts.find(part => part.inlineData?.data || part.inline_data?.data);
-  if (!imagePart) throw new Error("Model gambar tidak mengembalikan hasil restorasi.");
-  const inline = imagePart.inlineData || imagePart.inline_data;
-  return { mimeType: inline.mimeType || inline.mime_type || "image/png", data: inline.data };
-}
-
-function wrapText(ctx, text, maxWidth) {
-  const words = String(text || "").split(/\s+/).filter(Boolean);
-  const lines = [];
-  let line = "";
-  for (const word of words) {
-    const candidate = line ? line + " " + word : word;
-    if (ctx.measureText(candidate).width <= maxWidth || !line) line = candidate;
-    else { lines.push(line); line = word; }
-  }
-  if (line) lines.push(line);
-  return lines;
-}
-
-async function typesetTranslations(cleaned, originalDimensions, regions) {
-  const bitmap = await createImageBitmap(base64ToBlob(cleaned.data, cleaned.mimeType));
-  const width = originalDimensions.width;
-  const height = originalDimensions.height;
-  const canvas = new OffscreenCanvas(width, height);
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(bitmap, 0, 0, width, height);
-  bitmap.close();
-
-  for (const region of regions) {
-    const x = region.x / 1000 * width;
-    const y = region.y / 1000 * height;
-    const w = region.w / 1000 * width;
-    const h = region.h / 1000 * height;
-    const padding = Math.max(3, Math.min(w, h) * 0.08);
-    const maxWidth = Math.max(8, w - padding * 2);
-    const maxHeight = Math.max(8, h - padding * 2);
-    let fontSize = Math.max(9, Math.min(46, h * 0.24));
-    let lines = [];
-
-    while (fontSize >= 7) {
-      ctx.font = (region.style.italic ? "italic " : "") +
-        (region.style.weight === "bold" ? "700 " : "400 ") + fontSize + "px Arial, sans-serif";
-      lines = wrapText(ctx, region.translation, maxWidth);
-      if (lines.length * fontSize * 1.16 <= maxHeight) break;
-      fontSize -= 1;
-    }
-
-    ctx.save();
-    ctx.font = (region.style.italic ? "italic " : "") +
-      (region.style.weight === "bold" ? "700 " : "400 ") + Math.max(7, fontSize) + "px Arial, sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.lineJoin = "round";
-
-    const lineHeight = Math.max(8, Math.max(7, fontSize) * 1.16);
-    const centerX = x + w / 2;
-    const centerY = y + h / 2;
-    const firstY = centerY - ((lines.length - 1) * lineHeight) / 2;
-
-    for (let i = 0; i < lines.length; i += 1) {
-      const line = lines[i];
-      const lineY = firstY + i * lineHeight;
-      ctx.lineWidth = Math.max(1, fontSize * 0.055);
-      ctx.strokeStyle = region.style.outline;
-      ctx.strokeText(line, centerX, lineY, maxWidth);
-      ctx.fillStyle = region.style.color;
-      ctx.fillText(line, centerX, lineY, maxWidth);
-    }
-    ctx.restore();
-  }
-
-  const blob = await canvas.convertToBlob({ type: "image/png" });
-  return "data:image/png;base64," + bytesToBase64(new Uint8Array(await blob.arrayBuffer()));
-}
-
 
 async function captureSelectedArea(tab, rect, dpr) {
   if (!tab || typeof tab.windowId !== "number") {
@@ -381,49 +148,41 @@ async function captureSelectedArea(tab, rect, dpr) {
   return "data:image/png;base64," + bytesToBase64(new Uint8Array(await blob.arrayBuffer()));
 }
 
-async function processImage(message) {
-  const saved = await chrome.storage.local.get(["apiKey", "targetLanguage", "sourceLanguage", "cleanupMode"]);
-  const apiKey = String(saved.apiKey || "").trim();
-  if (!apiKey) throw new Error("Masukkan Gemini API key di popup extension terlebih dahulu.");
-
-  const settings = {
-    targetLanguage: message.targetLanguage || saved.targetLanguage || "id",
-    sourceLanguage: message.sourceLanguage || saved.sourceLanguage || "auto",
-    cleanupMode: saved.cleanupMode || "ai"
-  };
-
-  const fullPayload = await getImagePayload(message);
-  const originalDimensions = await imageDimensions(fullPayload);
-  const payload = await cropPayload(fullPayload, message.area);
-  const detection = await detectAndTranslate(payload, settings, apiKey);
-
-  if (!detection.regions.length) {
-    return { ok: true, noText: true, dataUrl: null, regions: [], detectedLanguage: detection.detectedLanguage };
+let creatingOffscreen;
+async function ensureEngineDocument() {
+  const contexts = await chrome.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] });
+  if (contexts.length) return;
+  if (!creatingOffscreen) {
+    creatingOffscreen = chrome.offscreen.createDocument({
+      url: "engine.html", reasons: ["BLOBS"],
+      justification: "Process local image blobs and retain translation jobs while the service worker sleeps."
+    }).finally(() => { creatingOffscreen = null; });
   }
+  await creatingOffscreen;
+}
 
-  let cleaned;
-  let cleanupWarning = "";
-  if (settings.cleanupMode === "ai") {
-    try {
-      cleaned = await aiClean(payload, detection.regions, apiKey);
-    } catch (error) {
-      cleaned = await simpleClean(payload, detection.regions);
-      cleanupWarning = "Restorasi AI gagal; memakai pembersihan sederhana. " + error.message;
-    }
-  } else {
-    cleaned = await simpleClean(payload, detection.regions);
-  }
+async function engineMessage(message) {
+  await ensureEngineDocument();
+  return chrome.runtime.sendMessage({ ...message, target: "mita-engine" });
+}
 
-  const dimensions = message.area ? await imageDimensions(payload) : originalDimensions;
-  const dataUrl = await typesetTranslations(cleaned, dimensions, detection.regions);
-
-  return {
-    ok: true, noText: false, dataUrl, regions: detection.regions,
-    detectedLanguage: detection.detectedLanguage, cleanupWarning, dimensions
-  };
+async function processImage(message, sender) {
+  const saved = await chrome.storage.local.get(["targetLanguage"]);
+  const payload = await cropPayload(await getImagePayload(message), message.area);
+  return engineMessage({
+    type: "START_JOB", payload,
+    targetLanguage: saved.targetLanguage || "id",
+    owner: sender.tab?.id ?? "popup"
+  });
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.target === "mita-engine") return;
+  if (message?.type === "CHECK_ENGINE" || message?.type === "GET_JOB" || message?.type === "RELEASE_JOB") {
+    engineMessage({ type: message.type, jobId: message.jobId, owner: sender.tab?.id ?? "popup" })
+      .then(sendResponse).catch(error => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
   if (message?.type === "GET_SITE_AUTO") {
     chrome.storage.local.get(["autoSites"])
       .then(data => sendResponse({ ok: true, enabled: Boolean(data.autoSites?.[message.hostname]) }))
@@ -442,7 +201,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === "PROCESS_MANGA_IMAGE") {
-    processImage(message)
+    processImage(message, sender)
       .then(result => sendResponse(result))
       .catch(error => sendResponse({ ok: false, error: error?.message || "Terjemahan gagal." }));
     return true;

@@ -18,9 +18,22 @@ jobs:
           node-version: 22
       - name: Validate manifest
         run: node -e "const m = require('./manifest.json'); if (m.manifest_version !== 3) process.exit(1); for (const f of ['background.js','content.js','editor.js','popup.js']) { if (!require('fs').existsSync(f)) throw new Error('Missing ' + f); }"
+      - name: Unit tests
+        run: node --test tests/*.test.mjs
       - name: Check JavaScript syntax
         run: |
           node --check background.js
           node --check content.js
           node --check editor.js
           node --check popup.js
+          node --check engine.js
+          node --check local-engine.mjs
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install browser test dependencies
+        run: |
+          pip install playwright pillow
+          playwright install --with-deps chromium
+      - name: Browser integration (simulated engine, no model inference)
+        run: python tests/browser_smoke.py

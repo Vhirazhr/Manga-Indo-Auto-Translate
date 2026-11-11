@@ -2,6 +2,8 @@ const targetLanguage = document.getElementById("targetLanguage");
 const siteAuto = document.getElementById("siteAuto");
 const statusBox = document.getElementById("status");
 const siteName = document.getElementById("siteName");
+const versionLabel = document.getElementById("version") || document.querySelector(".version");
+if (versionLabel) versionLabel.textContent = "Versi " + chrome.runtime.getManifest().version + " · Manga Indo";
 
 let activeTab = null;
 let activeHost = "";

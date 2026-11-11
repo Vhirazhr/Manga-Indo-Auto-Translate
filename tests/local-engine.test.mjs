@@ -24,6 +24,13 @@ test("all targets use offline M2M100 and LaMa; unsupported target fails", () => 
     const config = engineConfig(language);
     assert.equal(config.translator.translator, "m2m100");
     assert.equal(config.inpainter.inpainter, "lama_large");
+    assert.equal(config.detector.detection_size, 2048);
+    assert.equal(config.inpainter.inpainting_size, 2048);
+    assert.equal(config.inpainter.inpainting_precision, "bf16");
+    assert.equal(config.render.direction, "auto");
+    assert.equal(config.render.rtl, true);
+    assert.equal(config.ocr.ignore_bubble, 5);
+    assert.equal(config.mask_dilation_offset, 30);
   }
   assert.equal(engineConfig().translator.target_lang, "IND");
   assert.throws(() => engineConfig("xx"));

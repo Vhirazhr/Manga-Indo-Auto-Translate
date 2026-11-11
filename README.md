@@ -41,7 +41,15 @@ Jika sudah memasang upstream dengan Python, jalankan dari folder upstream:
 python server/main.py --host 127.0.0.1 --port 8000 --start-instance
 ```
 
-## Retensi file dan penghematan penyimpanan\n\n- Gambar hasil terjemahan dari extension dikirim sebagai data gambar langsung ke tab Chrome; extension tidak otomatis membuat file PNG permanen. Hasil yang kamu pilih melalui **Download PNG** tetap menjadi file milikmu dan tidak disentuh pembersih otomatis.\n- Container menjalankan `engine/cleanup-temp.sh`: pembersihan langsung saat startup, lalu setiap 15 menit menghapus file temporary dan file di `/app/result` yang waktu modifikasinya lebih dari 3 jam. File yang masih baru/aktif dipertahankan.\n- Folder temporary Python diarahkan ke volume `manga-temp`; hasil server berada di volume `manga-results`. Keduanya terpisah dari `manga-models` dan `manga-cache`, yang tidak pernah dihapus oleh pembersih.\n- Log Docker dibatasi sampai tiga file berukuran maksimum 10 MB per file (maksimum sekitar 30 MB).\n- Pembersihan 3 jam tidak menghapus Docker image, model OCR/M2M100/LaMa, cache model, repository, atau folder Downloads. Jangan gunakan `docker compose down -v` kecuali memang ingin menghapus seluruh volume termasuk model yang sudah diunduh.\n\n## Pengelolaan & pemecahan masalah
+## Retensi file dan penghematan penyimpanan
+
+- Gambar hasil terjemahan dari extension dikirim sebagai data gambar langsung ke tab Chrome; extension tidak otomatis membuat file PNG permanen. Hasil yang kamu pilih melalui **Download PNG** tetap menjadi file milikmu dan tidak disentuh pembersih otomatis.
+- Container menjalankan `engine/cleanup-temp.sh`: pembersihan langsung saat startup, lalu setiap 15 menit menghapus file temporary dan file di `/app/result` yang waktu modifikasinya lebih dari 3 jam. File yang masih baru/aktif dipertahankan.
+- Folder temporary Python diarahkan ke volume `manga-temp`; hasil server berada di volume `manga-results`. Keduanya terpisah dari `manga-models` dan `manga-cache`, yang tidak pernah dihapus oleh pembersih.
+- Log Docker dibatasi sampai tiga file berukuran maksimum 10 MB per file (maksimum sekitar 30 MB).
+- Pembersihan 3 jam tidak menghapus Docker image, model OCR/M2M100/LaMa, cache model, repository, atau folder Downloads. Jangan gunakan `docker compose down -v` kecuali memang ingin menghapus seluruh volume termasuk model yang sudah diunduh.
+
+## Pengelolaan & pemecahan masalah
 
 ```sh
 # Lihat progres unduhan model dan error inferensi

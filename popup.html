@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manga Indo Auto Translate</title>
+  <style>
+    :root { color-scheme: light; font-family: Arial, sans-serif; }
+    body { width: 340px; margin: 0; padding: 16px; color: #202124; background: #fff; }
+    h1 { font-size: 17px; margin: 0 0 5px; }
+    .sub { font-size: 12px; color: #5f6368; margin: 0 0 15px; line-height: 1.45; }
+    label { display: block; font-size: 12px; font-weight: 700; margin: 12px 0 6px; }
+    input[type=password] { box-sizing: border-box; width: 100%; padding: 10px; border: 1px solid #dadce0; border-radius: 8px; }
+    .row { display: flex; align-items: center; gap: 8px; margin: 13px 0; font-size: 13px; }
+    .row label { display: inline; margin: 0; font-weight: 400; line-height: 1.35; }
+    button { width: 100%; padding: 10px 12px; border: 0; border-radius: 8px; cursor: pointer; font-weight: 700; margin-top: 8px; }
+    #saveKey { background: #f1f3f4; color: #202124; }
+    #start { background: #1a73e8; color: white; }
+    #stop { background: #fce8e6; color: #b3261e; }
+    #status { min-height: 32px; margin-top: 12px; padding: 8px; border-radius: 7px; background: #f8f9fa; font-size: 12px; line-height: 1.4; }
+    .help { font-size: 11px; color: #5f6368; line-height: 1.45; margin-top: 12px; }
+    a { color: #1a73e8; }
+    .note { color: #8a4b08; }
+  </style>
+</head>
+<body>
+  <h1>📖 Manga Indo Auto Translate</h1>
+  <p class="sub">Terjemahkan dialog manga yang sedang terlihat di layar menjadi bahasa Indonesia.</p>
+
+  <label for="apiKey">Gemini API key</label>
+  <input id="apiKey" type="password" placeholder="Tempel API key dari Google AI Studio" autocomplete="off">
+  <button id="saveKey">Simpan API key</button>
+
+  <div class="row">
+    <input id="autoToggle" type="checkbox">
+    <label for="autoToggle">Terjemahkan otomatis saat aku scroll</label>
+  </div>
+
+  <button id="start">Mulai / Terjemahkan layar sekarang</button>
+  <button id="stop">Matikan dan sembunyikan terjemahan</button>
+
+  <div id="status">Masukkan API key, simpan, lalu klik Mulai saat halaman manga terbuka.</div>
+
+  <p class="help">
+    Belum punya API key? <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Buat API key di Google AI Studio</a>.
+    <br><br>
+    <span class="note">Catatan:</span> Google AI Pro tidak otomatis mencakup kuota Gemini API. API memiliki batas dan ketentuan penggunaan tersendiri.
+    API key disimpan di profil Chrome lokal dan dikirim hanya ke server Gemini saat menerjemahkan. Jangan bagikan key atau folder extension ini.
+  </p>
+
+  <script src="popup.js"></script>
+</body>
+</html>

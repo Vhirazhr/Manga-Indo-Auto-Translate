@@ -5,7 +5,7 @@ set -eu
 
 TEMP_ROOT="${MITA_TEMP_ROOT:-${TMPDIR:-/tmp/manga-indo-temp}}"
 RESULT_ROOT="${MITA_RESULT_ROOT:-/app/result}"
-RETENTION_MINUTES="${MITA_RETENTION_MINUTES:-1440}"
+RETENTION_MINUTES="${MITA_RETENTION_MINUTES:-180}"
 CLEANUP_INTERVAL_SECONDS="${MITA_CLEANUP_INTERVAL_SECONDS:-900}"
 CLEANUP_ONCE="${MITA_CLEANUP_ONCE:-0}"
 
@@ -27,7 +27,7 @@ cleanup_root() {
   deleted_dirs="$(find "$root" -xdev -depth -mindepth 1 -type d -empty -mmin "+$RETENTION_MINUTES" -print -delete 2>/dev/null | wc -l | tr -d '[:space:]')"
 
   if [ "${deleted_files:-0}" -gt 0 ] || [ "${deleted_dirs:-0}" -gt 0 ]; then
-    printf '24-hour cleanup: %s: removed %s files and %s empty folders.\n' "$label" "${deleted_files:-0}" "${deleted_dirs:-0}"
+    printf '3-hour cleanup: %s: removed %s files and %s empty folders.\n' "$label" "${deleted_files:-0}" "${deleted_dirs:-0}"
   fi
 }
 
@@ -36,7 +36,7 @@ cleanup_expired_files() {
   cleanup_root "$RESULT_ROOT" "translation results"
 }
 
-# Run once immediately on container startup, then repeat every 15 minutes.
+# Run once immediately on container startup, then repeat every 15 minutes. Files older than 3 hours are eligible for removal.
 cleanup_expired_files
 
 if [ "$CLEANUP_ONCE" = "1" ]; then

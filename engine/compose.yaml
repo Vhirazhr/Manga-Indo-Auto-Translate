@@ -21,7 +21,7 @@ services:
       - manga-cache:/root/.cache
       - manga-temp:/tmp/manga-indo-temp
       - manga-results:/app/result
-      - ./engine/cleanup-temp.sh:/usr/local/bin/mita-cleanup-temp.sh:ro
+      - ./cleanup-temp.sh:/usr/local/bin/mita-cleanup-temp.sh:ro
     shm_size: "2gb"
     restart: unless-stopped
     logging:

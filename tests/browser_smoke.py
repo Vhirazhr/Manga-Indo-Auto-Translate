@@ -83,6 +83,14 @@ with sync_playwright() as p:
         page.mouse.up();page.wait_for_timeout(200);assert page.locator('#page').get_attribute('src')==translated
         print('PASS toolbar press-and-hold temporarily reveals original')
 
+        # The manga image itself also supports the hold-to-peek gesture.
+        page.locator('#page').hover(position={"x":320,"y":480});page.mouse.down()
+        page.wait_for_timeout(360)
+        assert page.locator('#page').get_attribute('src')==original_url
+        page.mouse.up();page.wait_for_timeout(120)
+        assert page.locator('#page').get_attribute('src')==translated
+        print('PASS press-and-hold directly on the manga image reveals original')
+
         # Selected-area translation must be composited into the page image, not left
         # as a temporary viewport overlay that disappears during scrolling.
         sw.evaluate('(id) => chrome.tabs.sendMessage(id,{type:"TOGGLE_ORIGINALS"})',tabid)

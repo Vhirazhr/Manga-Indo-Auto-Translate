@@ -1,4 +1,4 @@
-const DEFAULT_MODEL = "gemini-2.5-flash";
+const DEFAULT_MODEL = "gemini-3.8-flash";
 const REQUEST_TIMEOUT_MS = 45000;
 const MAX_RETRIES = 2;
 
